@@ -1582,17 +1582,30 @@ esac
       const swapped = Date.now();
       assert.ok(swapped >= await sleeperGone, 'it waits for Relay to exit first');
       assert.equal(versionOf(bundle), '99.0.0', 'the new version is in place');
-      assert.deepEqual([fs.existsSync(`${bundle}.old`), fs.existsSync(path.join(upd, 'staged.json')), fs.existsSync(path.join(upd, 'last-error.txt'))], [false, false, false], 'the old one and the staged note are gone');
+      assert.deepEqual([fs.existsSync(path.join(bundle, 'Contents.old')), fs.existsSync(path.join(upd, 'staged.json')), fs.existsSync(path.join(upd, 'last-error.txt'))], [false, false, false], 'the old one and the staged note are gone');
       assert.ok(!fs.existsSync(path.join(tmp, 'opened')), 'and nothing is opened when it was a plain quit');
       await swap(true); // nothing staged now, so the copy fails
       assert.equal(versionOf(bundle), '99.0.0', 'a failed copy puts the old app back');
-      assert.ok(!fs.existsSync(`${bundle}.old`));
+      assert.ok(!fs.existsSync(path.join(bundle, 'Contents.old')));
       assert.match(fs.readFileSync(path.join(upd, 'last-error.txt'), 'utf8'), /Couldn't copy the new version/, 'and says why in last-error.txt');
       assert.ok(!fs.existsSync(path.join(tmp, 'opened')), 'and opens nothing');
       fakeApp(upd, '99.0.1');
       await swap(true);
       assert.equal(versionOf(bundle), '99.0.1');
       assert.equal(fs.readFileSync(path.join(tmp, 'opened'), 'utf8').trim(), bundle, 'Restart to update opens the new version');
+      // A non-admin account can't rename things in /Applications (root:admin 775) but owns Relay.app itself
+      const apps = path.dirname(bundle);
+      fakeApp(upd, '99.0.2');
+      fs.rmSync(path.join(upd, 'last-error.txt')); // the failed copy's, read by the next launch
+      fs.chmodSync(apps, 0o555);
+      try {
+        await swap(false);
+      } finally {
+        fs.chmodSync(apps, 0o755);
+      }
+      assert.equal(versionOf(bundle), '99.0.2', 'it installs without write access to the folder holding Relay.app');
+      assert.deepEqual([fs.readdirSync(apps), fs.readdirSync(bundle), fs.existsSync(path.join(upd, 'staged.json')), fs.existsSync(path.join(upd, 'last-error.txt'))],
+        [['Relay.app'], ['Contents'], false, false], 'same path, no Contents.old, nothing staged, no error');
       fs.writeFileSync(path.join(upd, 'last-error.txt'), 'mv: Operation not permitted');
       U.auto({ dataDir: autoData, quit: () => quits++ }); // the next launch
       const told = await ok('GET', '/api/update');

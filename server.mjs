@@ -204,7 +204,12 @@ route('POST', '/api/sessions', async ({ req, body }) => {
   const role = asked;
   const project = projectFor(req, body.project);
   if (!isDir(project)) throw fail(400, `Not a folder: ${project}`);
-  return S.info(await S.createSession({ project, kind, agent, prompt, name, worktree, role, specialist, model, effort, startedBy: starter(req) }));
+  // A thread's terminal drawer: a shell in that chat's folder (or worktree), kept out of the grid. Keyed by the chat,
+  // not the session, so it stays with the thread when the chat is resumed or Relay restarts.
+  const alongside = body.alongside ? findSession(body.alongside) : null;
+  if (alongside && (kind !== 'shell' || !alongside.chatId)) throw fail(400, 'Only a shell can start alongside a thread');
+  if (alongside && alongside.project !== project) throw fail(403, "A thread's terminal must be in the thread's own project");
+  return S.info(await S.createSession({ project, kind, agent, prompt, name, worktree, role, specialist, model, effort, startedBy: starter(req), alongside, drawerOf: alongside?.chatId ?? null }));
 });
 route('DELETE', '/api/sessions/:id', ({ req, params }) => (S.stop(noShell(req, sameProject(req, params.id), 'stop')), {}));
 
@@ -311,6 +316,7 @@ route('PATCH', '/api/chats/:id', ({ req, params, body }) => {
 route('DELETE', '/api/chats/:id', ({ params }) => {
   const chat = findChat(params.id);
   for (const s of S.chatSessions(chat.id)) S.stop(s);
+  for (const s of [...S.sessions.values()].filter(x => x.drawerOf === chat.id)) S.stop(s); // and its drawer's shells
   db.chats = db.chats.filter(c => c.id !== chat.id); // Claude's own copy of the conversation is left alone
   changed('chats');
   return {};
@@ -1034,8 +1040,8 @@ export async function start({ port = Number(process.env.PORT) || 4747, dataDir =
     await reopen(c).catch(e => console.error(`Couldn't reopen ${c.name}:`, e.message));
   }
   for (const x of [...db.shells].sort((a, b) => a.createdAt - b.createdAt)) {
-    if (!fs.statSync(x.cwd, { throwIfNoEntry: false })?.isDirectory()) db.shells = db.shells.filter(y => y !== x);
-    else await S.createSession({ kind: 'shell', project: x.project, cwd: x.cwd, name: x.name, shellId: x.id }).catch(e => console.error(`Couldn't reopen ${x.name}:`, e.message));
+    if (!fs.statSync(x.cwd, { throwIfNoEntry: false })?.isDirectory() || (x.drawerOf && !db.chats.some(c => c.id === x.drawerOf))) db.shells = db.shells.filter(y => y !== x);
+    else await S.createSession({ kind: 'shell', project: x.project, cwd: x.cwd, name: x.name, shellId: x.id, drawerOf: x.drawerOf ?? null }).catch(e => console.error(`Couldn't reopen ${x.name}:`, e.message));
   }
   const upkeep = setInterval(() => S.upkeep().catch(e => console.error('Lead upkeep failed:', e)), 30_000);
   // Save finished days of spend even if the Spend page is never opened, before Claude Code deletes their transcripts.

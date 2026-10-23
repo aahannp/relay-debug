@@ -1,1 +1,42 @@
 /* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE. */
+/* The terminal drawer under the chat (drawer.js), after T3's ThreadTerminalDrawer: no header, a 6px resize edge on top,
+   a floating Plus/Trash cluster with one terminal, and a 9rem list on the right with two or more.
+   #drawer also has the class .drawer, which views.css gives the Board's slide-over panel, so this undoes that by id. */
+#drawer { position: relative; inset: auto; width: auto; flex-shrink: 0; display: flex; flex-direction: column; min-width: 0; overflow: hidden; z-index: 4;
+  border: 0; border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius: 0; box-shadow: none;
+  background: var(--term-bg, var(--bg)); animation: drawerIn .15s var(--ease); }
+#drawer[hidden] { display: none; }
+@keyframes drawerIn { from { opacity: 0; } }
+.drawer-grip { position: absolute; inset: 0 0 auto; height: 6px; z-index: 20; cursor: row-resize; }
+.drawer-grip:focus-visible { outline: none; box-shadow: inset 0 2px 0 var(--ring); }
+
+.drawer-body { flex: 1; min-height: 0; display: flex; }
+.drawer-terms { flex: 1; min-width: 0; display: flex; }
+.drawer-terms .pane { flex: 1; border: 0; border-radius: 0; box-shadow: none; animation: none; background: var(--term-bg, var(--bg)); }
+.drawer-terms .pane.focus, .drawer-terms .pane.attn { box-shadow: none; animation: none; }
+.drawer-terms .pane.drawer-off { display: none; }
+.drawer-terms .pane-head { display: none; } /* T3's drawer has no header */
+.drawer-terms .term-host { padding: 8px 6px 4px 12px; }
+
+/* One terminal: p-1 buttons with 13px icons in a rounded box, top right */
+.drawer-cluster { position: absolute; top: 8px; right: 8px; z-index: 20; display: inline-flex; align-items: center; overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius: 6px; background: var(--bg); box-shadow: var(--shadow-xs, 0 1px 2px rgb(0 0 0 / .06)); }
+.drawer-cluster[hidden], .drawer-side[hidden] { display: none; }
+.drawer-sep { width: 1px; height: 16px; background: color-mix(in srgb, var(--line) 80%, transparent); }
+.drawer-btn { display: inline-grid; place-items: center; padding: 4px; border: 0; background: none; color: color-mix(in srgb, var(--text) 90%, transparent); transition: background .15s; }
+.drawer-btn:hover { background: var(--soft); }
+.drawer-btn:focus-visible, .drawer-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+/* Two or more: the w-36 side list, its buttons in a 22px strip on top, rows h-6 text-xs */
+.drawer-side { width: 9rem; min-width: 9rem; display: flex; flex-direction: column; margin-left: 6px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); background: color-mix(in srgb, var(--soft) 10%, var(--term-bg, var(--bg))); }
+.drawer-side-head { display: flex; justify-content: flex-end; height: 22px; flex-shrink: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.drawer-side-head .drawer-btn { padding: 0 4px; }
+.drawer-side-head .drawer-btn + .drawer-btn { border-left: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.drawer-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.drawer-tab { display: flex; align-items: center; gap: 4px; height: 24px; width: 100%; padding: 0 8px 0 6px; border: 0; border-radius: 6px; background: none;
+  font-size: 12px; color: var(--dim); text-align: left; cursor: pointer; }
+.drawer-tab:hover { background: var(--softer); color: var(--text); }
+.drawer-tab[aria-selected="true"] { background: var(--soft); color: var(--text); }
+.drawer-tab .icon { flex-shrink: 0; }
+.drawer-tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -48,6 +48,8 @@ assert.deepEqual(migrated({ mixFolders: true, lastProject: '/x/b', openSpaces: [
 assert.deepEqual(migrated({ mixFolders: false, openSpaces: [] }, [spA, spB]).openSpaces, [], 'off: just the current one');
 assert.ok(!('mixFolders' in migrated({ mixFolders: true }, [spA])), 'the old switch is gone');
 assert.deepEqual(migrated({ openSpaces: ['/x/a', '/gone', '/x/a', '/x/b'] }, [spA, spB]).openSpaces, ['/x/a', '/x/b'], 'removed folders and repeats drop out');
+assert.deepEqual([migrated({ theme: 'midnight', accent: '#ff3ea5' }).theme, 'accent' in migrated({ accent: '' })], ['t3dark', false], 'pre-T3 data: the old default theme becomes T3 Dark and the accent setting is dropped');
+assert.equal(migrated({ theme: 'nord', accent: '' }).theme, 'nord', 'a theme you picked yourself stays');
 assert.ok(desk.token.length >= 32, 'an empty token file is replaced with a real secret');
 assert.ok(!fs.existsSync(path.join(tmp, 'data', 'mcp', 'gone1234.json')), "a session's MCP file never outlives a restart");
 let SELF = `http://127.0.0.1:${desk.port}`;
@@ -794,18 +796,16 @@ Ready to submit your answers?
   assert.equal(claudeThemeFile().base, 'light', 'made from a light Desk theme, it is a light one');
   await ok('PATCH', '/api/settings', { theme: 'nord' });
   assert.deepEqual([claudeThemeFile().base, claudeThemeFile().overrides.userMessageBackground], ['dark', THEMES.nord.ui.panel2], 'switching the Desk theme rewrites it, which repaints open panes');
-  await ok('PATCH', '/api/settings', { accent: '#ff0000' });
-  assert.equal(claudeThemeFile().overrides.selectionBg, claudeTheme().overrides.selectionBg, 'and so does the accent');
   assert.match(claudeTheme().overrides.selectionBg, /^#[0-9a-f]{6}$/);
+  assert.equal(Object.keys(THEMES).slice(0, 2).join(), 't3dark,t3light', 'the T3 themes come first');
   for (const [id, t] of Object.entries(THEMES)) {
-    for (const accent of ['', '#ff0000']) { // its own accent, and one of yours
-      Object.assign(db.settings, { theme: id, accent });
-      const sel = claudeTheme().overrides.selectionBg;
-      assert.ok(contrast(t.ui.text, sel) >= 4.5 && contrast(t.ui.dim, sel) >= 3, `${id} ${accent}: text stays readable on the selection (${sel})`);
-      assert.ok(contrast(sel, t.term.background) > 1.15, `${id} ${accent}: and the selection shows (${sel})`);
-    }
+    assert.ok(!('accent' in t.ui), `${id} has no accent colour; focus and selection use its blue`);
+    db.settings.theme = id;
+    const sel = claudeTheme().overrides.selectionBg;
+    assert.ok(contrast(t.ui.text, sel) >= 4.5 && contrast(t.ui.dim, sel) >= 3, `${id}: text stays readable on the selection (${sel})`);
+    assert.ok(contrast(sel, t.term.background) > 1.15, `${id}: and the selection shows (${sel})`);
   }
-  await ok('PATCH', '/api/settings', { theme: savedTheme, accent: '' });
+  await ok('PATCH', '/api/settings', { theme: savedTheme });
 
   // The whole chat lifecycle, with a stand-in `claude` on the PATH that prints its arguments and exits
   const fakeBin = path.join(tmp, 'fake-bin');

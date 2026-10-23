@@ -21,7 +21,7 @@ function paint() {
     base: t.dark ? 'vs-dark' : 'vs', inherit: true, rules: [],
     colors: {
       'editor.background': t.term.background, 'editorGutter.background': t.term.background, 'minimap.background': t.term.background,
-      'editor.lineHighlightBackground': t.ui.panel, 'editorWidget.background': t.ui.panel, 'editor.selectionBackground': `${state.settings.accent || t.ui.accent}44`,
+      'editor.lineHighlightBackground': t.ui.panel, 'editorWidget.background': t.ui.panel, 'editor.selectionBackground': `${t.term.blue}44`,
       'diffEditor.insertedLineBackground': `${t.term.green}1c`, 'diffEditor.insertedTextBackground': `${t.term.green}38`,
       'diffEditor.removedLineBackground': `${t.term.red}1c`, 'diffEditor.removedTextBackground': `${t.term.red}38`,
       'diffEditorGutter.insertedLineBackground': `${t.term.green}2a`, 'diffEditorGutter.removedLineBackground': `${t.term.red}2a`,

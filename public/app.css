@@ -1,56 +1,56 @@
-/* Relay. Colours come from the active theme (themes.js sets the base variables);
-   everything else is derived here so every theme gets the same glass and depth. */
+/* Relay. Colours come from the active theme (themes.js sets the base variables and --ring, the theme's blue);
+   everything else is derived here, after T3 Code's neutral look: hairline borders, quiet fills, one blue for focus. */
 :root {
-  --bg: #07080b; --side: #0a0b10; --panel: #11131a; --panel2: #181b24; --line: #232733;
-  --text: #eceef4; --dim: #8b91a3; --accent: #ff3ea5; --accent-ink: #fff;
-  --ok: #4ade80; --warn: #fbbf24; --bad: #ff5c7a; --info: #60a5fa;
-  --glass: color-mix(in srgb, var(--panel) 66%, transparent);
-  --glass-strong: color-mix(in srgb, var(--panel) 86%, transparent);
-  --hair: color-mix(in srgb, var(--text) 8%, transparent);
-  --hair-strong: color-mix(in srgb, var(--text) 14%, transparent);
-  --soft: color-mix(in srgb, var(--text) 6%, transparent);
-  --softer: color-mix(in srgb, var(--text) 3.5%, transparent);
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --lift: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
-  --shadow: 0 24px 60px -18px rgb(0 0 0 / .7), 0 2px 10px rgb(0 0 0 / .3);
+  --bg: #0a0a0a; --side: #111111; --panel: #111111; --panel2: #181818; --line: #1f1f1f;
+  --text: #f5f5f5; --dim: #818181; --ring: #346bf1; --ring-ink: #fff;
+  --ok: #00d492; --warn: #ffb900; --bad: #ff6467; --info: #346bf1;
+  --glass: color-mix(in srgb, var(--panel) 80%, transparent);
+  --glass-strong: color-mix(in srgb, var(--panel) 86%, transparent); /* dialogs, menus and toasts, over a blur */
+  --hair: var(--line);
+  --hair-strong: color-mix(in srgb, var(--line), var(--text) 7%); /* input borders */
+  --pop-line: color-mix(in srgb, var(--text) 9%, transparent); /* the edge of anything floating */
+  --soft: color-mix(in srgb, var(--text) 5%, transparent); /* hover and pressed fills */
+  --softer: color-mix(in srgb, var(--text) 3%, transparent);
+  --ring-soft: color-mix(in srgb, var(--ring) 24%, transparent);
+  --lift: inset 0 1px 0 rgb(255 255 255 / 4%);
+  --shadow: inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / .9);
+  --shadow-pop: 0 18px 44px -18px rgb(0 0 0 / .8);
   --shadow-sm: 0 10px 30px -14px rgb(0 0 0 / .65);
-  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
-  --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --radius: .625rem; --control-radius: .5rem;
+  --text-2xs: 11px; --text-3xs: 10px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --display: var(--sans);
+  --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --ease: cubic-bezier(.2, .8, .2, 1);
 }
-/* Light: near-solid panels lifted off a slightly darker page by a crisp hairline and a soft, short shadow.
-   Glass over white just looks grey, and dark glows look dirty, so both are toned down here. */
+/* Light: solid white surfaces on a near-white page, separated by borders and a short, soft shadow. */
 [data-mode="light"] {
   --glass: color-mix(in srgb, var(--panel) 92%, transparent);
-  --glass-strong: var(--panel);
-  --hair: color-mix(in srgb, var(--text) 10%, transparent);
-  --hair-strong: color-mix(in srgb, var(--text) 15%, transparent);
-  --soft: color-mix(in srgb, var(--text) 7%, transparent);
-  --softer: color-mix(in srgb, var(--text) 4%, transparent);
-  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
-  --lift: inset 0 1px 0 rgb(255 255 255 / .7);
-  --shadow: 0 24px 48px -20px rgb(20 24 40 / .22), 0 4px 12px -4px rgb(20 24 40 / .08);
+  --glass-strong: color-mix(in srgb, var(--panel) 90%, transparent);
+  --hair-strong: color-mix(in srgb, var(--line), var(--text) 9%);
+  --pop-line: color-mix(in srgb, var(--text) 10%, transparent);
+  --lift: 0 1px 2px rgb(0 0 0 / 5%);
+  --shadow: 0 24px 64px -24px rgb(0 0 0 / .4);
+  --shadow-pop: 0 16px 40px -18px rgb(0 0 0 / .35);
   --shadow-sm: 0 1px 2px rgb(20 24 40 / .05), 0 6px 16px -10px rgb(20 24 40 / .16);
 }
 [data-mode="light"] .side { background: var(--side); backdrop-filter: none; }
 [data-mode="light"] .col { background: color-mix(in srgb, var(--side) 55%, var(--bg)); box-shadow: none; }
 [data-mode="light"] .card { background: var(--panel); box-shadow: var(--shadow-sm); }
 [data-mode="light"] .card:hover { box-shadow: 0 1px 2px rgb(20 24 40 / .05), 0 14px 28px -16px rgb(20 24 40 / .26); }
-[data-mode="light"] .card.selected { box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow-sm); }
-[data-mode="light"] .segmented button.on { box-shadow: 0 1px 2px rgb(20 24 40 / .1), inset 0 0 0 1px var(--hair-strong); }
+[data-mode="light"] .card.selected { box-shadow: 0 0 0 3px var(--ring-soft), var(--shadow-sm); }
+[data-mode="light"] .segmented button.on { box-shadow: 0 1px 2px rgb(0 0 0 / .08), inset 0 0 0 1px var(--hair); }
 [data-mode="light"] .avatar { box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 2px 6px -2px rgb(20 24 40 / .3); }
-[data-mode="light"] .toggle input { box-shadow: inset 0 1px 2px rgb(20 24 40 / .12); }
-[data-mode="light"] .toggle input::after { box-shadow: 0 1px 3px rgb(20 24 40 / .25); }
+[data-mode="light"] .toggle input { box-shadow: inset 0 1px 1px rgb(0 0 0 / .04); }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; letter-spacing: -.003em; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
 body { overflow: hidden; }
-::selection { background: var(--accent); color: var(--accent-ink); }
+::selection { background: color-mix(in srgb, var(--ring) 25%, transparent); }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 button { cursor: pointer; }
-:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 80%, transparent); outline-offset: 2px; }
-kbd { font: 500 10.5px var(--mono); color: var(--dim); border: 1px solid var(--hair-strong); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; background: var(--softer); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+kbd { display: inline-flex; align-items: center; justify-content: center; height: 20px; min-width: 20px; padding: 0 4px; border-radius: 4px; background: var(--soft); color: var(--dim); font: 500 var(--text-2xs) var(--sans); vertical-align: middle; }
 code, .mono { font-family: var(--mono); font-size: 12px; }
 .muted { color: var(--dim); }
 .grow { flex: 1; }
@@ -67,11 +67,11 @@ code, .mono { font-family: var(--mono); font-size: 12px; }
 .cursor-dot, .cursor-ring { position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none; border-radius: 50%; opacity: 0; will-change: transform; contain: strict; }
 .fancy-cursor .cursor-dot, .fancy-cursor .cursor-ring { opacity: 1; }
 /* Sizes stay fixed; cursor.js scales them with transform so moving never triggers layout. */
-.cursor-dot { width: 6px; height: 6px; margin: -3px 0 0 -3px; background: var(--accent); transition: opacity .15s; }
+.cursor-dot { width: 6px; height: 6px; margin: -3px 0 0 -3px; background: var(--ring); transition: opacity .15s; }
 .cursor-ring { width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 1.5px solid color-mix(in srgb, var(--text) 40%, transparent); transition: opacity .15s, background .2s, border-color .2s; }
-.cursor-ring.hover { border-color: color-mix(in srgb, var(--accent) 70%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.cursor-ring.press { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.cursor-ring.drag { border-style: dashed; border-color: var(--accent); }
+.cursor-ring.hover { border-color: color-mix(in srgb, var(--ring) 70%, transparent); background: color-mix(in srgb, var(--ring) 10%, transparent); }
+.cursor-ring.press { background: color-mix(in srgb, var(--ring) 22%, transparent); }
+.cursor-ring.drag { border-style: dashed; border-color: var(--ring); }
 .cursor-dot.away, .cursor-ring.away { opacity: 0 !important; }
 
 

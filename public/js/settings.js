@@ -27,24 +27,21 @@ const section = (title, text, ...body) => h('section', { class: 'card-section' }
 
 function render() {
   const s = state.settings;
-  const current = THEMES[s.theme] ? s.theme : 'midnight';
+  const current = THEMES[s.theme] ? s.theme : 't3dark';
   const mcpCommand = `claude mcp add --transport http --scope user agent-desk ${state.info.mcpUrl} --header "x-desk-token: ${state.info.token}"`;
 
   root.replaceChildren(h('div', { class: 'settings-inner' },
-    section('Appearance', `${Object.keys(THEMES).length} themes, dark and light. The accent colour is yours to change.`,
+    section('Appearance', `${Object.keys(THEMES).length} themes, dark and light.`,
       ...[['Dark', true], ['Light', false]].flatMap(([label, dark]) => [h('h3', { class: 'theme-group' }, label),
       h('div', { class: 'themes' }, Object.entries(THEMES).filter(([, t]) => t.dark === dark).map(([id, t]) => h('button', { class: `theme-card${id === current ? ' on' : ''}`, onClick: () => set({ theme: id }) },
         h('div', { class: 'theme-prev', style: { background: t.ui.bg } },
           h('div', { class: 'sb', style: { background: t.ui.side, borderRight: `1px solid ${t.ui.line}` } }),
           h('div', { class: 'body' },
-            h('div', { class: 'bar', style: { background: t.ui.accent, width: '42%' } }),
+            h('div', { class: 'bar', style: { background: t.term.blue, width: '42%' } }),
             h('div', { class: 'bar', style: { background: t.ui.line, width: '76%' } }),
             h('div', { class: 'bar', style: { background: t.ui.line, width: '58%' } }),
             h('div', { class: 'ansi' }, ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan'].map(c => h('i', { style: { background: t.term[c] } }))))),
         h('div', { class: 'theme-name', style: { background: t.ui.panel, color: t.ui.text } }, t.name))))]),
-      setting('Accent colour', 'Used for buttons, focus rings and highlights.', h('div', { class: 'row' },
-        h('input', { type: 'color', value: s.accent || THEMES[current].ui.accent, onChange: e => set({ accent: e.target.value }), style: { width: '44px', height: '30px', border: 0, background: 'none', padding: 0 } }),
-        s.accent && h('button', { class: 'btn sm ghost', onClick: () => set({ accent: '' }) }, 'Reset'))),
       setting('Sidebar', 'Hide it to give the panes the whole window. ⌘B or the button at the top left also do it.',
         h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: s.sidebarHidden !== true, onChange: e => set({ sidebarHidden: !e.target.checked }) }))),
       setting('Animated cursor', 'A custom cursor that reacts to what you point at. It steps aside over terminals and text.',

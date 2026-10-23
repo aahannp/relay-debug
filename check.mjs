@@ -2010,6 +2010,21 @@ esac
   for (let i = 0; i < 50 && !(await outputOf(live[2].id)); i++) await new Promise(r => setTimeout(r, 100));
   assert.match(await outputOf(live[2].id), new RegExp(`--resume ${db.chats.find(c => c.id === done.chatId).claudeSessionId}`), 'and so does the finished one, resumed');
   assert.ok(!(await ok('GET', '/api/chats')).find(c => c.id === closed.chatId).running, 'a chat you closed stays in Recent');
+
+  { // Chat v2 T2: the chat view's work-log line and timer (public/js/worklog.js), and no pink in chat.css
+    const W = await import('./public/js/worklog.js');
+    const tool = (name, label, error = false) => ({ kind: 'tool', name, label, error });
+    assert.equal(W.summarize([tool('Read', 'Read a'), tool('Read', 'Read b'), tool('Read', 'Read a'), tool('Bash', 'Ran `ls`')]).label,
+      'Read 2 files and ran 1 command', 'reads count distinct files');
+    assert.equal(W.summarize([tool('Read', 'Read a'), tool('Bash', 'Ran `ls`'), tool('Grep', 'Searched for `x`'), tool('WebFetch', 'Fetched https://x')]).label,
+      'Read 1 file, ran 1 command, and performed 2 other actions', "T3's top two, the rest counted, joined with an Oxford comma");
+    assert.equal(W.summarize([tool('Edit', 'Edited a'), tool('MultiEdit', 'Edited a')]).label, 'Changed 1 file', 'two edits to one file');
+    assert.deepEqual(W.summarize([tool('Bash', 'Ran `a`', true), tool('mcp__x__y', 'x: y'), { kind: 'thinking' }]), { label: 'Ran 1 command and used 1 tool', failed: 1 },
+      'thinking stays out of the line; a failure is counted');
+    assert.equal(W.summarize([{ kind: 'thinking' }, { kind: 'thinking' }]).label, 'Thought (×2)');
+    assert.deepEqual([12000, 65000, 3725000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s']);
+    assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');
+  }
   console.log('All checks passed');
 } finally {
   desk.close();

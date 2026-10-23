@@ -617,7 +617,7 @@ function renderHead(p) {
   const kind = [s.specialist ? s.specialist.role.split(':')[0] : s.role === 'lead' ? 'Lead agent' : s.kind === 'shell' ? 'Shell' : agentLabel(s.agent), s.model, s.effort].filter(Boolean).join(' · ');
   p.sub.replaceChildren(...[
     h('span', {}, kind), h('span', { class: 'sep' }, '/'),
-    s.worktree ? h('span', { title: s.worktree.path }, shortBranch(s.worktree.branch)) : h('span', { title: s.cwd }, baseName(s.cwd)),
+    s.worktree ? h('span', { class: 'chip', title: s.worktree.path }, shortBranch(s.worktree.branch)) : h('span', { class: 'chip', title: s.cwd }, baseName(s.cwd)),
     s.taskId && h('span', { class: 'sep' }, '/'),
     s.taskId && h('button', { title: 'Open the task', onClick: () => actions.openTask?.(s.taskId) }, 'task'),
   ].filter(Boolean));

@@ -1,14 +1,15 @@
 /* The chat view's composer (composer.js): a card with the message box and a controls row, and the panel docked above it
-   while Claude asks something. Monochrome plus --warn; never --accent, and Stop stays neutral.
+   while Claude asks something. Monochrome plus --warn, and Stop stays neutral.
    Sizes and shadows adapted from T3 Code (https://github.com/pingdotgg/t3code, MIT): ComposerSurface, ComposerBanner,
    ComposerPendingUserInputPanel, ComposerPrimaryActions and ContextWindowMeter. */
+:root { --shadow-composer: 0 14px 32px -18px rgb(0 0 0 / .75); } /* T3's --shadow-composer-dark */
+[data-mode="light"] { --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / .4); }
 .chat-composer { flex: none; width: 100%; max-width: calc(46rem + 24px); margin-inline: auto; padding: 0 12px 12px; box-sizing: border-box; }
 @container (min-width: 640px) { .chat-composer { padding-inline: 48px; max-width: calc(46rem + 96px); } } /* lines up with chat.css's lane */
 
-.chat-card { position: relative; display: flex; flex-direction: column; border: 1px solid var(--hair-strong); border-radius: 20px; background: var(--panel);
-  box-shadow: 0 12px 28px -18px rgb(0 0 0 / .75); transition: border-color .2s; }
-[data-mode="light"] .chat-card { box-shadow: 0 12px 28px -18px rgb(0 0 0 / .4); }
-.chat-card:focus-within { border-color: color-mix(in srgb, var(--text) 32%, transparent); }
+.chat-card { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: calc(var(--radius, 10px) + 8px); background: var(--panel);
+  box-shadow: var(--shadow-composer); transition: border-color .2s; }
+.chat-card:focus-within { border-color: var(--ring, var(--info)); }
 .chat-input { display: block; width: 100%; box-sizing: border-box; border: 0; outline: none; background: none; resize: none; color: var(--text);
   padding: 12px 16px 2px; font: inherit; line-height: 1.5; field-sizing: content; min-height: calc(2lh + 14px); max-height: 13rem; overflow-y: auto; scrollbar-width: thin; }
 .chat-input::placeholder { color: var(--dim); }
@@ -22,7 +23,7 @@
 .chat-go:hover:not(:disabled) { transform: scale(1.05); }
 .chat-go:disabled { opacity: .64; cursor: default; }
 .chat-go[hidden] { display: none; }
-.chat-go:focus-visible, .chat-option:focus-visible, .chat-ring:focus-visible, .chat-dock-body:focus-visible { outline: 2px solid color-mix(in srgb, var(--text) 55%, transparent); outline-offset: 2px; }
+.chat-go:focus-visible, .chat-option:focus-visible, .chat-ring:focus-visible, .chat-dock-body:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
 .chat-go-stop { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
 /* The context ring: the meter in the pane header, round. Dim, amber over 70%, full text colour over 90%. */

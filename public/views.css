@@ -7,7 +7,7 @@
 .col .chip, .wt .chip, .drawer .chip, .arts .chip, .spend-card .chip, .agent-row .chip, .graph-panel .chip, .art-chat .chip {
   height: 19px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--hair-strong); background: none; color: var(--dim);
   font: 500 10.5px/1 var(--sans); letter-spacing: 0; text-transform: none; }
-.col .badge.claude, .col .badge.codex, .col .badge.gemini, .col .badge.cursor, .wt .badge.claude, .agent-row .badge.claude, .agent-row .badge.codex, .agent-row .badge.gemini, .agent-row .badge.cursor { border-color: transparent; }
+.col .badge.claude, .col .badge.codex, .col .badge.gemini, .col .badge.cursor, .wt .badge.claude, .agent-row .badge.claude, .agent-row .badge.codex, .agent-row .badge.gemini, .agent-row .badge.cursor { border-color: transparent; color: var(--dim); }
 .col .chip.mono, .wt .chip.mono { font-family: var(--mono); font-size: 10px; }
 
 /* ---------- Board ---------- */

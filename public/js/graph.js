@@ -311,7 +311,7 @@ function drawLegend() {
     dot('working', 'Working'), dot('idle', 'Idle'), dot('needs-input', 'Needs you'), dot('exited', 'Exited'),
     h('span', { class: 'sep' }),
     h('span', { class: 'line' }, h('i', { class: 'solid' }), 'Messages'), h('span', { class: 'line' }, h('i', { class: 'dashed' }), 'Started'),
-    allSpaces && h('span', { class: 'line' }, h('i', { class: 'dotted' }), 'Between spaces'),
+    allSpaces ? h('span', { class: 'line' }, h('i', { class: 'dotted' }), 'Between spaces') : '',
     h('span', { class: 'sep' }),
     h('span', { class: 'graph-hint' }, 'Drag to pan · Pinch or ⌘-scroll to zoom · Shift-drag to select'),
     groups.length > 0 ? h('span', { class: 'sep' }) : '',

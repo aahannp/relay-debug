@@ -367,6 +367,23 @@ textarea.input { resize: vertical; min-height: 84px; line-height: 1.55; }
 .meter.warn .meter-cost, .meter.bad .meter-cost { color: var(--dim); }
 @container (max-width: 520px) { .meter-cost { display: none; } }
 @container (max-width: 400px) { .meter { display: none; } }
+/* The Chat | Terminal switch on a Claude pane. Monochrome: the chosen segment is raised with --soft, never the accent. */
+.view-switch { display: inline-flex; flex-shrink: 0; padding: 2px; gap: 2px; border-radius: 9px; background: var(--softer); border: 1px solid var(--hair); }
+.seg { height: 22px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--dim); font-size: 11.5px; font-weight: 600; transition: background .2s, color .2s; }
+.seg:hover { color: var(--text); }
+.seg[aria-pressed="true"] { background: var(--soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--hair-strong); }
+.seg:focus-visible { outline-color: var(--text); outline-offset: 0; }
+/* In chat mode the context ring lives in the composer, so the header meter would show it twice. */
+.pane.chat-mode .pane-head .meter { display: none; }
+/* Narrow header: the state pill keeps its dot (its title names it) and the avatar steps aside, so the switch keeps both
+   labels and the agent's name keeps some room. */
+@container (max-width: 420px) {
+  .pane-head { gap: 6px; }
+  .pane-head > span:first-child { display: none; }
+  .pane-head .state { padding: 0 7px; }
+  .pane-head .state > span:not(.dot) { display: none; }
+  .seg { padding: 0 8px; }
+}
 .pane-body { position: relative; flex: 1; min-height: 0; display: flex; }
 /* content-box: xterm's fit addon reads this box's CSS width and height as the space to fill, so the padding must not be
    counted in them, or the last column slides under the scrollbar and the bottom row past the edge. */

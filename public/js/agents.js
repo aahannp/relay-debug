@@ -22,9 +22,11 @@ const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(v
 const hidden = new Set();
 const hiddenKeys = new Set(stored(HIDDEN, '[]'));
 let maxKey = stored(MAX, 'null'); // the pane that was maximised, until it shows up again
-// Claude panes you switched to Chat, by chat id like the hidden ones. Terminal is the default.
-const CHAT = 'agent-desk:chat-view';
-const chatKeys = new Set(stored(CHAT, '[]'));
+// Claude panes you switched to Terminal, by chat id like the hidden ones. Chat is the default, so the old
+// 'agent-desk:chat-view' list (the panes switched to Chat, back when Terminal was the default) means nothing now.
+const TERMINAL = 'agent-desk:terminal-view';
+const terminalKeys = new Set(stored(TERMINAL, '[]'));
+try { localStorage.removeItem('agent-desk:chat-view'); } catch {}
 const keyOf = id => (s => s?.chatId ?? s?.shellId ?? id)(panes.get(id)?.session);
 
 export function mount(root) {
@@ -352,7 +354,7 @@ function tick() {
     const status = statusOf(p.session);
     p.state.className = `state ${status}`;
     p.dot.className = `dot ${status}`;
-    p.stateText.textContent = STATUS_LABEL[status] ?? status;
+    p.stateText.textContent = p.state.title = STATUS_LABEL[status] ?? status; // the title names the dot when a narrow header hides the text
     p.chat?.setStatus(status);
   }
   renderSectionHeads();
@@ -503,12 +505,14 @@ function terminalPane(s, parent) {
   const blocks = h('div', { class: 'blocks' });
   const exitBar = h('div', { class: 'exit-bar' });
   const id = s.id;
-  const chatBtn = s.kind === 'agent' && s.agent === 'claude' && h('button', { class: 'icon-btn', onClick: () => p.showChat(!el.classList.contains('chat-mode')) });
+  // A labelled two-segment switch rather than an icon, so a pane says which view you're in.
+  const seg = (label, chat) => h('button', { type: 'button', class: 'seg', onClick: () => p.showChat(chat) }, label);
+  const chatSeg = seg('Chat', true), termSeg = seg('Terminal', false);
+  const viewSwitch = s.kind === 'agent' && s.agent === 'claude' && h('div', { class: 'view-switch', role: 'group', 'aria-label': 'View' }, chatSeg, termSeg);
   const blocksBtn = s.kind === 'shell' && h('button', { class: 'icon-btn', title: 'Command blocks', onClick: () => blocksBtn.classList.toggle('on', el.classList.toggle('show-blocks')) }, icon('list', 15));
   const head = h('div', { class: 'pane-head', draggable: true, title: 'Drag to move this pane', onDragstart: e => dragPane(e, id), onDragend: () => el.classList.remove('dragging'), onDblclick: e => !e.target.closest('button') && toggleMaximise(id) },
-    face, h('div', { class: 'pane-titles' }, title, sub), meter, state_,
+    face, h('div', { class: 'pane-titles' }, title, sub), meter, state_, viewSwitch,
     h('div', { class: 'pane-tools' },
-      chatBtn,
       blocksBtn,
       s.chatId && h('button', { class: 'icon-btn', title: 'Name this agent', onClick: () => renameAgent(s) }, icon('pen', 13)),
       h('button', { class: 'icon-btn', title: 'Hide from the grid (it keeps running)', onClick: () => hidePane(id) }, icon('eyeOff', 14)),
@@ -544,18 +548,17 @@ function terminalPane(s, parent) {
   p.peek = smoothScroll(term, host);
   new ResizeObserver(() => p.fit()).observe(host);
   if (s.kind === 'shell') commandBlocks(p);
-  if (chatBtn) {
+  if (viewSwitch) {
     p.chat = chatView(p);
     p.chat.el.addEventListener('focusin', () => setFocus(id));
     el.querySelector('.pane-body').append(p.chat.el);
     // The terminal stays mounted under the chat: hidden, fit() leaves the PTY its size, so Claude's screen is untouched.
     p.showChat = (on, focus = true) => {
       el.classList.toggle('chat-mode', on);
-      chatBtn.replaceChildren(icon(on ? 'terminal' : 'message', 14));
-      chatBtn.title = on ? 'Show the terminal' : 'Show as a chat';
-      chatBtn.setAttribute('aria-label', chatBtn.title);
-      chatKeys[on ? 'add' : 'delete'](keyOf(id));
-      store(CHAT, [...chatKeys]);
+      chatSeg.setAttribute('aria-pressed', on);
+      termSeg.setAttribute('aria-pressed', !on);
+      terminalKeys[on ? 'delete' : 'add'](keyOf(id));
+      store(TERMINAL, [...terminalKeys]);
       if (on) p.chat.show();
       else { p.chat.hide(); p.fit(); }
       if (focus) focusPane(p);
@@ -563,7 +566,8 @@ function terminalPane(s, parent) {
   }
   connect(p);
   panes.set(id, p);
-  p.showChat?.(chatKeys.has(keyOf(id)), false);
+  // A docked "Edit with AI" pane has no header, so no switch: it stays on the terminal.
+  p.showChat?.(!parent && !terminalKeys.has(keyOf(id)), false);
   layout();
   return p;
 }
@@ -589,6 +593,7 @@ function connect(p) {
 function renderMeter(p) {
   const m = p.session.meter;
   p.meter.hidden = !m;
+  p.chat?.setMeter(m); // the chat shows it in the composer instead, and the header one hides in chat mode
   if (!m) return;
   const v = meterView(m);
   p.meter.className = `meter ${v.level}`;
@@ -692,7 +697,7 @@ const closePane = guard(async id => {
   if (!p.session.exited && !(await confirmDialog(`Stop "${chatTitle(p.session)}"?`, `This ends the process running in this pane.${keeps}`, { label: 'Stop', danger: true }))) return;
   await api('DELETE', `/api/sessions/${id}`);
   if (hiddenKeys.delete(keyOf(id))) store(HIDDEN, [...hiddenKeys]);
-  if (chatKeys.delete(keyOf(id))) store(CHAT, [...chatKeys]);
+  if (terminalKeys.delete(keyOf(id))) store(TERMINAL, [...terminalKeys]);
   dispose(id);
   actions.refresh('sessions');
 });

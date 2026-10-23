@@ -2010,6 +2010,19 @@ esac
   for (let i = 0; i < 50 && !(await outputOf(live[2].id)); i++) await new Promise(r => setTimeout(r, 100));
   assert.match(await outputOf(live[2].id), new RegExp(`--resume ${db.chats.find(c => c.id === done.chatId).claudeSessionId}`), 'and so does the finished one, resumed');
   assert.ok(!(await ok('GET', '/api/chats')).find(c => c.id === closed.chatId).running, 'a chat you closed stays in Recent');
+  { // T3 exact E: a thread's terminal drawer is a shell started alongside its chat, in its folder, kept through a restart
+    const thread = live[0];
+    const drawerShell = await ok('POST', '/api/sessions', { kind: 'shell', project: repo, alongside: thread.id });
+    assert.deepEqual([drawerShell.cwd, drawerShell.worktree, drawerShell.drawerOf], [thread.cwd, thread.worktree, thread.chatId], "the drawer's shell works where its thread does, and belongs to its chat");
+    assert.equal((await request('POST', '/api/sessions', { body: { kind: 'shell', project: notRepo, alongside: thread.id } })).status, 403, "another project's thread is refused");
+    assert.equal((await request('POST', '/api/sessions', { body: { kind: 'agent', project: repo, alongside: thread.id } })).status, 400, 'only a shell goes in a drawer');
+    desk.close();
+    while ([...sessions.values()].some(x => !x.exited)) await new Promise(r => setTimeout(r, 50));
+    desk = await start({ port: 0, dataDir: path.join(tmp, 'data') });
+    SELF = `http://127.0.0.1:${desk.port}`;
+    const back = (await ok('GET', '/api/sessions')).find(x => x.shellId === drawerShell.shellId && !x.exited);
+    assert.deepEqual([back?.cwd, back?.drawerOf], [thread.cwd, thread.chatId], 'after a restart it comes back in the same drawer');
+  }
 
   { // Chat v2 T2: the chat view's work-log line and timer (public/js/worklog.js), and no pink in chat.css
     const W = await import('./public/js/worklog.js');

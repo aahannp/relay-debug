@@ -22,7 +22,7 @@ function loginShellPath() {
 
 const openOutside = url => /^(https?|mailto):/.test(url) && shell.openExternal(url);
 
-// The debug build (`npm run dist:debug`) is a separate app named "Relay Debug": own data folder, port, lock and no updates.
+// The debug build (`npm run dist:debug`) is a separate app named "Relay Debug": own data folder, port and lock, and its own releases.
 const DEBUG = app.getName() === 'Relay Debug';
 const APP_NAME = DEBUG ? 'Relay Debug' : 'Relay';
 
@@ -57,7 +57,7 @@ function newWindow() {
 async function boot() {
   process.env.PATH = await loginShellPath();
   // Imported only now, because the server copies process.env for its agents when it loads.
-  if (DEBUG) process.env.RELAY_DEBUG = '1'; // the server reports it to the page and refuses updates
+  if (DEBUG) process.env.RELAY_DEBUG = '1'; // the server reports it to the page and updates from relay-debug
   const { start } = await import('../server.mjs');
   const options = {
     dataDir: app.getPath('userData'),
@@ -68,7 +68,7 @@ async function boot() {
     return start({ ...options, port: 0 }); // the port is taken, so take any free port
   });
   update = await import('../lib/update.mjs');
-  if (app.isPackaged && !DEBUG) update.auto({ dataDir: options.dataDir, quit: () => app.quit() }); // never from `npm run app`'s Electron
+  if (app.isPackaged) update.auto({ dataDir: options.dataDir, quit: () => app.quit() }); // never from `npm run app`'s Electron
 
   // Electron grants every page every permission unless told otherwise, and browser panes frame other
   // websites. So deny by default, and give Relay's own top-level page only what it uses.
@@ -130,7 +130,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     server?.close();
     try {
-      if (app.isPackaged && !DEBUG) update?.installOnQuit();
+      if (app.isPackaged) update?.installOnQuit();
     } catch (e) {
       console.error("Couldn't install the update:", e.message);
     }

@@ -1491,6 +1491,14 @@ esac
   const up = await ok('GET', '/api/update?force=1');
   assert.deepEqual([up.newer, up.latest, up.notes, up.asset.name], [true, 'v99.0.0', 'Smoother scrolling', 'Relay-99.0.0-arm64.dmg'], 'a newer release is found');
   assert.equal((await request('POST', '/api/update/download', { headers: { 'x-desk-via': 'mcp' } })).status, 403, "agents can't download updates");
+  const was = process.env.RELAY_DEBUG;
+  process.env.RELAY_DEBUG = '1';
+  const early = U.channel();
+  delete process.env.RELAY_DEBUG;
+  const normal = U.channel();
+  if (was !== undefined) process.env.RELAY_DEBUG = was;
+  assert.deepEqual([early.app, early.repo, early.dmg('2.0.0')], ['Relay Debug', 'aahannp/relay-debug', 'Relay-Debug-2.0.0-arm64.dmg'], 'Relay Debug updates from its own repo and file name');
+  assert.deepEqual([normal.app, normal.repo, normal.dmg('2.0.0')], ['Relay', 'aahannp/relay', 'Relay-2.0.0-arm64.dmg'], 'and Relay is unchanged');
   const realHome = process.env.HOME;
   process.env.HOME = tmp;
   fs.mkdirSync(path.join(tmp, 'Downloads'));

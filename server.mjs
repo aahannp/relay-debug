@@ -87,8 +87,7 @@ const starter = req => (s => s && { id: s.id, name: s.name })(caller(req)); // t
 // may only start agents or edit a specialist while Settings allows it. (An agent runs as you and could reach the API some other way; this keeps
 // the tools, the way agents actually work, inside the lines you set.)
 const fromAgent = req => req.auth?.kind === 'agent' || req.headers['x-desk-via'] === 'mcp' || Boolean(req.headers['x-desk-session']);
-const DEBUG = process.env.RELAY_DEBUG === '1'; // the "Relay Debug" app: it must never download or install the real Relay
-const notNow = () => { if (DEBUG) throw fail(403, 'This is the debug build: updates are off.'); };
+const DEBUG = process.env.RELAY_DEBUG === '1'; // the "Relay Debug" early-access app (updates from its own repo, see lib/update.mjs)
 const notFromAgent = (req, what) => { if (fromAgent(req)) throw fail(403, `Agents can't ${what}. Ask the user to do it in Relay.`); };
 const mayStartAgents = req => {
   if (fromAgent(req) && db.settings.agentsCanSpawn === false) throw fail(403, 'Starting other agents is turned off in Relay settings.');
@@ -575,10 +574,10 @@ route('DELETE', '/api/groups/:id', ({ req, params }) => {
 });
 
 // Updates: is there a newer release on GitHub, and download it
-route('GET', '/api/update', ({ query }) => (DEBUG ? { current: U.current(), debug: true } : U.status(query.get('force') === '1')));
+route('GET', '/api/update', ({ query }) => U.status(query.get('force') === '1'));
 // With automatic updates on, Download gets the update ready to install instead of saving it to Downloads.
-route('POST', '/api/update/download', ({ req }) => (notNow(), notFromAgent(req, 'download updates'), U.autoOn() ? U.prepare() : U.download()));
-route('POST', '/api/update/install', ({ req }) => (notNow(), notFromAgent(req, 'install updates'), U.restart()));
+route('POST', '/api/update/download', ({ req }) => (notFromAgent(req, 'download updates'), U.autoOn() ? U.prepare() : U.download()));
+route('POST', '/api/update/install', ({ req }) => (notFromAgent(req, 'install updates'), U.restart()));
 route('POST', '/api/update/show', () => U.reveal());
 
 // The team: named specialists with their own instructions and model

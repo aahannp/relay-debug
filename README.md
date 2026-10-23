@@ -288,12 +288,14 @@ included. A different Xcode or macOS may compile the voice helper or sign binari
 
     shasum -a 256 "dist/mac-arm64/Relay.app/Contents/Resources/app.asar" "/Applications/Relay.app/Contents/Resources/app.asar"
 
-## Debug build
+## Early access: Relay Debug
 
-To try a branch before it ships, build a second app that runs beside Relay: `npm run dist:debug` makes
-`dist/Relay-Debug-<version>-arm64.dmg`. Drag "Relay Debug" into Applications like any app. It has its own board,
-chats and login (`~/Library/Application Support/Relay Debug`), its own port (4849, never Relay's 4848), and its own
-agent config, so it never touches your real Relay. It labels itself DEBUG and never updates itself.
+Relay Debug is a separate early-access app that installs beside Relay. It has its own board, chats and login
+(`~/Library/Application Support/Relay Debug`), its own port (4849, never Relay's 4848) and its own agent config, so
+it never touches your real Relay. New features land there first. Download it from
+[github.com/aahannp/relay-debug/releases](https://github.com/aahannp/relay-debug/releases); it labels itself DEBUG
+and updates itself from those releases, never from Relay's. It is the same code: `npm run dist:debug` builds it
+(`dist/Relay-Debug-<version>-arm64.dmg`), and the release workflow does that when it runs in the relay-debug repo.
 
 ## Roadmap
 

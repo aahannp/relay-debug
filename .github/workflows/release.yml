@@ -44,13 +44,17 @@ jobs:
       - run: npm ci
       - run: npm run check
       # --publish never: electron-builder would otherwise publish by itself on a tag build in CI
-      - run: npm run dist -- --publish never
+      # The early-access repo builds "Relay Debug" from the same commits; every other repo builds Relay.
+      - name: Build
+        run: |
+          if [ "$GITHUB_REPOSITORY" = "aahannp/relay-debug" ]; then npm run dist:debug -- --publish never; else npm run dist -- --publish never; fi
 
       - name: Name the DMG and check the tag
         id: dmg
         run: |
           set -euo pipefail
           name=$(node -p "require('./package.json').productName.replace(/ /g, '-')")
+          [ "$GITHUB_REPOSITORY" = "aahannp/relay-debug" ] && name=Relay-Debug
           version=$(node -p "require('./package.json').version")
           if [ "$TAG" != "v$version" ]; then
             echo "::error::tag $TAG does not match package.json version v$version"
@@ -82,16 +86,18 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --generate-notes
+          if [ "$GITHUB_REPOSITORY" = "aahannp/relay-debug" ]; then early='Early access build. It may change faster than Relay and have rough edges.'; else early=; fi
           gh release upload "$TAG" "$DMG" "$DMG.sha256" --clobber
           # drop any block from a previous run so re-runs don't stack notes
           body=$(gh release view "$TAG" --json body --jq .body | sed '/^<!-- verify:start -->$/,/^<!-- verify:end -->$/d')
           {
+            [ -z "$early" ] || printf '%s\n\n' "$early"
             printf '%s\n\n' "$body"
             echo '<!-- verify:start -->'
             echo "SHA-256: $HASH"
             echo
             echo '```'
-            echo "gh attestation verify $(basename "$DMG") -R aahannp/relay"
+            echo "gh attestation verify $(basename "$DMG") -R $GITHUB_REPOSITORY"
             echo '```'
             echo '<!-- verify:end -->'
           } > release-notes.md

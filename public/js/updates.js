@@ -12,20 +12,20 @@ async function check(force = false) {
   } catch (e) {
     info = { error: e.message };
   }
-  if (info.debug && !pill.nextElementSibling) pill.after(h('span', { class: 'debug-tag', title: 'Relay Debug: its own data, port and no updates' }, 'DEBUG'));
+  if (info.debug && !pill.nextElementSibling) pill.after(h('span', { class: 'debug-tag', title: 'Relay Debug: early access, with its own data, port and releases' }, 'DEBUG'));
   pill.textContent = info.staged ? 'Restart to update' : info.newer ? 'Update' : info.current ? `v${info.current}` : 'v?';
   pill.classList.toggle('new', Boolean(info.newer));
   pill.title = info.staged ? `${info.latest} is ready to install` : info.newer ? `${info.latest} is available` : 'Check for updates';
   if (info.installError) {
-    toast(`The update couldn't install (${info.installError}). macOS may be blocking it: allow Relay in System Settings › Privacy & Security › App Management, then turn Update automatically back on in Settings. Until then the Update button downloads it to your Downloads folder.`, 'error');
+    toast(`The update couldn't install (${info.installError}). macOS may be blocking it: allow ${info.app || 'Relay'} in System Settings › Privacy & Security › App Management, then turn Update automatically back on in Settings. Until then the Update button downloads it to your Downloads folder.`, 'error');
   }
   return info;
 }
 
+const APP = () => info?.app || 'Relay';
 const mb = bytes => `${Math.round(bytes / 1048576)} MB`;
 
 export async function openUpdates() {
-  if (info?.debug) return toast('This is the debug build: updates are off.');
   const body = h('div', { class: 'update' }, h('p', { class: 'muted' }, 'Checking GitHub…'));
   modal({ title: 'Updates', width: 520, body });
   const paint = d => {
@@ -54,7 +54,7 @@ export async function openUpdates() {
 }
 
 async function restart() {
-  const yes = await confirmDialog('Restart to update?', 'Relay quits, installs the new version and opens again. Agents will stop and resume after restart.', { label: 'Restart to update' });
+  const yes = await confirmDialog('Restart to update?', `${APP()} quits, installs the new version and opens again. Agents will stop and resume after restart.`, { label: 'Restart to update' });
   if (!yes) return;
   try {
     await api('POST', '/api/update/install');
@@ -76,7 +76,7 @@ async function download(d, button, bar, note, paint) {
     if (version) return paint(await check()); // automatic updates: it's ready to install
     bar.firstChild.style.width = '100%';
     button.lastChild.textContent = 'In your Downloads folder';
-    note.replaceChildren(`${name} is in your Downloads folder. Open it, drag Relay into Applications (choose Replace if asked), then quit this app and open Relay. Your board, chats and settings carry over. If you're coming from Agent Desk, you can delete Agent Desk from Applications afterwards. `,
+    note.replaceChildren(`${name} is in your Downloads folder. Open it, drag ${APP()} into Applications (choose Replace if asked), then quit this app and open ${APP()}. Your board, chats and settings carry over. If you're coming from Agent Desk, you can delete Agent Desk from Applications afterwards. `,
       h('button', { class: 'btn xs', onClick: () => api('POST', '/api/update/show') }, 'Show in Finder'));
   } catch (e) {
     button.disabled = false;

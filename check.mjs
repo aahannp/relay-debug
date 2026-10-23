@@ -385,6 +385,31 @@ try {
   const more = transcriptChat(talk, talked.size, repo);
   assert.deepEqual([more.reset, more.items], [false, [{ kind: 'text', key: 'a7:0', text: 'Done.' }]], 'reading on gives only the new item, and a half-written line waits');
   assert.equal(transcriptChat(talk, more.size, repo).items.length, 0, 'nothing new until the line is finished');
+  // AskUserQuestion: its questions as a card (no JSON detail), and the result says what was picked
+  const asked = { questions: [
+    { header: 'Database', question: 'Which database?', multiSelect: false, options: [{ label: 'Postgres', description: 'Relational' }, { label: 'Mongo', description: 'Documents' }] },
+    { header: 'Extras', question: 'Which extras?', multiSelect: true, options: [{ label: 'Cache' }, { label: 'Search', description: 7 }] },
+  ] };
+  const askFile = path.join(tmp, 'ask.jsonl');
+  fs.writeFileSync(askFile, `${[
+    entry('q1', 'assistant', [{ type: 'tool_use', id: 'k1', name: 'AskUserQuestion', input: asked }]),
+    entry('q2', 'user', [{ type: 'tool_result', tool_use_id: 'k1', content: 'User has answered your questions: "Which database?"="Postgres", "Which extras?"="Cache, Search". You can now continue with the user\'s answers in mind.' }]),
+    entry('q3', 'assistant', [{ type: 'tool_use', id: 'k2', name: 'AskUserQuestion', input: { questions: [{ question: 'Ship it?', options: [{ label: 'Yes' }] }] } }]),
+    entry('q4', 'user', [{ type: 'tool_result', tool_use_id: 'k2', is_error: true, content: 'The user doesn\'t want to proceed with this tool use.' }]),
+    entry('q5', 'assistant', [{ type: 'tool_use', id: 'k3', name: 'ExitPlanMode', input: { plan: 'x' } }, { type: 'tool_use', id: 'k4', name: 'Skill', input: { skill: 'run' } }]),
+  ].join('\n')}\n`);
+  assert.deepEqual(transcriptChat(askFile, 0, repo).items, [
+    { kind: 'tool', key: 'q1:0', id: 'k1', name: 'AskUserQuestion', label: 'Asked 2 questions', detail: '', ask: [
+      { header: 'Database', question: 'Which database?', multiSelect: false, options: [{ label: 'Postgres', description: 'Relational' }, { label: 'Mongo', description: 'Documents' }] },
+      { header: 'Extras', question: 'Which extras?', multiSelect: true, options: [{ label: 'Cache', description: '' }, { label: 'Search', description: '' }] },
+    ] },
+    { kind: 'result', key: 'q2:0', id: 'k1', error: false, text: 'User has answered your questions: "Which database?"="Postgres", "Which extras?"="Cache, Search". You can now continue with the user\'s answers in mind.', images: 0,
+      answers: { 'Which database?': 'Postgres', 'Which extras?': 'Cache, Search' } },
+    { kind: 'tool', key: 'q3:0', id: 'k2', name: 'AskUserQuestion', label: 'Asked a question', detail: '', ask: [{ header: '', question: 'Ship it?', multiSelect: false, options: [{ label: 'Yes', description: '' }] }] },
+    { kind: 'result', key: 'q4:0', id: 'k2', error: true, text: 'The user doesn\'t want to proceed with this tool use.', images: 0 },
+    { kind: 'tool', key: 'q5:0', id: 'k3', name: 'ExitPlanMode', label: 'Exit plan mode', detail: '{\n  "plan": "x"\n}' },
+    { kind: 'tool', key: 'q5:1', id: 'k4', name: 'Skill', label: 'Skill: run', detail: '{\n  "skill": "run"\n}' },
+  ], 'a question card gets its questions as plain fields and its answers; a declined one only its error; other tools a readable name');
   fs.writeFileSync(talk, `${entry('n1', 'user', 'new start')}\n`);
   assert.deepEqual((({ reset, items }) => ({ reset, items }))(transcriptChat(talk, more.size, repo)), { reset: true, items: [{ kind: 'user', key: 'n1:0', text: 'new start', images: 0 }] }, 'a file that shrank starts over');
   fs.writeFileSync(talk, `${'x'.repeat(100)}\n${entry('big', 'assistant', [{ type: 'text', text: 'y'.repeat(2 * 1024 * 1024) }])}\n${entry('z1', 'user', 'tail')}\n`);

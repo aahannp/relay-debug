@@ -341,6 +341,14 @@ route('GET', '/api/sessions/:id/transcript', ({ req, params, query }) => { // a 
   if (s.kind !== 'agent' || s.agent !== 'claude') throw fail(400, 'Only Claude panes have a chat view');
   return S.chatFeed(s, query.get('sid') || null, Math.max(0, Number(query.get('after')) || 0));
 });
+// The chat view answering the menu on screen ({ n, label } from the feed's menu): arrow keys and Enter only, and only
+// for you. An agent answering would approve another agent's permission prompts, which deliver() exists to stop.
+route('POST', '/api/sessions/:id/choose', ({ req, params, body }) => {
+  const s = sameProject(req, params.id);
+  if (s.kind !== 'agent' || s.agent !== 'claude') throw fail(400, 'Only Claude panes have a chat view');
+  if (fromAgent(req)) throw fail(403, "Agents can't answer prompts; ask the user");
+  return (S.choose(s, Number(body.n), String(body.label ?? '')), {});
+});
 route('POST', '/api/sessions/:id/clone', async ({ req, params, body }) => {
   mayStartAgents(req);
   const src = sameProject(req, params.id);

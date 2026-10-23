@@ -2,7 +2,7 @@
 // and hand its path to an agent so it can look at it.
 import { state, api, h, icon, on, toast, guard, actions, menu, baseName, copy, ago } from './ui.js';
 
-const COLORS = ['#ff3ea5', '#facc15', '#22d3ee', '#4ade80', '#ffffff', '#111111'];
+const COLORS = ['#f87171', '#facc15', '#22d3ee', '#4ade80', '#ffffff', '#111111'];
 const TOOLS = [['arrow', 'arrow', 'Arrow'], ['box', 'box', 'Box'], ['pen', 'pen', 'Draw'], ['text', 'text', 'Text']];
 let canvas, ctx, wrap, placeholder, gallery, saveBtn;
 let image = null;

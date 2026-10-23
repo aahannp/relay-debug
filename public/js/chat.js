@@ -1,13 +1,12 @@
 // Chat view of a Claude pane: the same conversation as its terminal, read from Claude Code's transcript.
 // The terminal stays mounted underneath, so switching back is instant and Claude's screen is never disturbed.
 // The server sends only what's new ({ sid, size, reset, prompting, items }); the page only appends.
-import { api, h, icon, markdown, on } from './ui.js';
+import { api, h, markdown, on } from './ui.js';
 import { loadMonaco } from './monaco.js';
+import { composer } from './composer.js';
 
 const MAX_ROWS = 400;
 const LANGS = { js: 'javascript', ts: 'typescript', sh: 'shell', bash: 'shell', zsh: 'shell', py: 'python' };
-// Control characters out (newlines and tabs stay), so a paste can't end the paste brackets early (as lib/sessions.mjs does).
-const CONTROL = /\x1b|[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
 // "Ran `npm test`": the label's backticks become code.
 const label = text => text.split('`').map((t, i) => (i % 2 ? h('code', {}, t) : t));
 
@@ -51,40 +50,17 @@ export function chatView(p) {
   const working = h('div', { class: 'chat-working', hidden: true }, h('span', { class: 'dot' }), 'Claude is working…');
   const scroller = h('div', { class: 'chat-scroll', onScroll: () => { if (atBottom()) more.hidden = true; } }, hint, list, working);
   const more = h('button', { class: 'btn xs chat-more', hidden: true, onClick: () => toEnd() }, '↓ New messages');
-  const barText = h('span', { class: 'grow' });
-  const bar = h('div', { class: 'chat-bar', role: 'status', hidden: true },
-    icon('alert', 14), barText,
-    h('button', { class: 'btn xs', onClick: () => p.showChat(false) }, icon('terminal', 12), 'Open Terminal'));
-  const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'Message Claude', onKeydown: e => {
-    if (e.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-    if (e.key === 'Escape') { e.preventDefault(); p.send('\x1b'); } // interrupts Claude, as in the terminal
-  } });
-  const stop = h('button', { class: 'icon-btn', title: 'Stop Claude (Esc)', 'aria-label': 'Stop Claude', hidden: true, onClick: () => p.send('\x1b') }, icon('stop', 14));
-  const send = h('button', { class: 'icon-btn', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send', onClick: () => submit() }, icon('send', 14));
-  const el = h('div', { class: 'chat' }, scroller, more, bar, h('div', { class: 'chat-compose' }, input, stop, send));
+  const c = composer(p);
+  c.el.addEventListener('sent', () => toEnd());
+  const el = h('div', { class: 'chat' }, scroller, more, c.el);
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
   const toEnd = () => { scroller.scrollTop = scroller.scrollHeight; more.hidden = true; };
 
-  // Typed into the terminal as a paste, then Enter on its own: Claude Code treats one big chunk as a paste.
-  function submit() {
-    const text = input.value.replace(CONTROL, '').trim();
-    if (!text || input.disabled || p.ws?.readyState !== WebSocket.OPEN) return;
-    p.send(p.term.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text.replace(/\s*\n\s*/g, ' '));
-    setTimeout(() => p.send('\r'), 150);
-    input.value = '';
-    toEnd();
-  }
-
-  // You can't answer a menu from here: typing "1" into a permission prompt would pick an option.
   function lock() {
-    const exited = p.session.exited;
-    input.disabled = send.disabled = exited || prompting;
-    input.placeholder = exited ? 'This agent has exited' : prompting ? 'Answer in the terminal' : 'Message Claude';
-    bar.hidden = !prompting || exited;
-    barText.textContent = asking ? 'Answer the question above in the terminal' : 'Claude is asking something in the terminal';
-    working.hidden = stop.hidden = status !== 'working';
+    working.hidden = status !== 'working';
+    // ponytail: `pending` is only the open question card for now; the last tool without a result and `menu` come with the docked panels
+    c.update({ status, exited: p.session.exited, prompting, menu: null, pending: asking ? { id: asking, ask: true } : null });
   }
 
   // At most one request every 500 ms while output streams in, plus one after the last chunk.
@@ -207,7 +183,8 @@ export function chatView(p) {
     show() { shown = true; lock(); poke(); requestAnimationFrame(toEnd); },
     hide() { shown = false; },
     poke,
-    focus: () => input.focus(),
+    focus: () => c.focus(),
+    setMeter: m => c.setMeter(m),
     // The pane's status each second: shows "working…" and the Stop button, and reads once more when Claude goes idle.
     setStatus(now) {
       if (now === status) return;

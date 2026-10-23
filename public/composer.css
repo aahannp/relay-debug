@@ -1,0 +1,10 @@
+.chat-bar { display: flex; align-items: center; gap: 8px; margin: 0 12px; padding: 7px 8px 7px 12px; border: 1px solid var(--hair-strong); border-bottom: 0;
+  border-radius: 10px 10px 0 0; background: var(--soft); font-size: 12px; }
+.chat-compose { display: flex; align-items: flex-end; gap: 2px; margin: 0 12px 12px; padding: 4px 4px 4px 12px; border: 1px solid var(--hair-strong); border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent); transition: border-color .2s; }
+.chat-bar:not([hidden]) + .chat-compose { border-top-left-radius: 0; border-top-right-radius: 0; }
+.chat-compose:focus-within { border-color: color-mix(in srgb, var(--text) 35%, transparent); }
+.chat-input { flex: 1; min-width: 0; border: 0; outline: none; background: none; resize: none; padding: 5px 0; line-height: 1.5;
+  field-sizing: content; min-height: calc(1.5em + 10px); max-height: calc(8 * 1.5em + 10px); }
+.chat-input:disabled { color: var(--dim); }
+.chat-compose .icon-btn:disabled { opacity: .4; pointer-events: none; }

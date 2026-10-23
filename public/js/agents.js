@@ -255,8 +255,9 @@ function sync() {
   for (const s of state.sessions) {
     live.add(s.id);
     announce(s);
-    // An "Edit with AI" chat is docked beside its page by the Artifacts view (dockPane), not shown in the grid.
-    const p = panes.get(s.id) ?? (s.artifactId ? null : terminalPane(s));
+    // An "Edit with AI" chat is docked beside its page by the Artifacts view (dockPane), and a drawer's shell lives in
+    // its chat's terminal drawer: neither is shown in the grid.
+    const p = panes.get(s.id) ?? (s.artifactId || s.drawerOf ? null : terminalPane(s));
     if (!p) continue;
     p.session = s;
     if (hiddenKeys.has(keyOf(s.id))) hidden.add(s.id);

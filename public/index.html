@@ -13,6 +13,11 @@
 <link rel="stylesheet" href="/views.css">
 <link rel="stylesheet" href="/chat.css">
 <link rel="stylesheet" href="/composer.css">
+<link rel="stylesheet" href="/palette.css">
+<link rel="stylesheet" href="/thread.css">
+<link rel="stylesheet" href="/diff.css">
+<link rel="stylesheet" href="/drawer.css">
+<link rel="stylesheet" href="/pages.css">
 </head>
 <body>
 <div class="app-bg" aria-hidden="true"><div class="grain"></div></div>
@@ -45,13 +50,16 @@
   </aside>
   <main class="main">
     <header class="topbar">
-      <button class="icon-btn side-toggle" id="sideToggle" title="Hide the sidebar (⌘B)"></button>
-      <div class="crumbs"><span class="view-icon" id="viewIcon"></span><div class="titles"><h1 id="viewTitle">Agents</h1><span id="viewHint" class="muted"></span></div></div>
+      <div class="crumbs" id="crumbs"><span class="view-icon" id="viewIcon"></span><div class="titles"><h1 id="viewTitle">Agents</h1><span id="viewHint" class="muted"></span></div></div>
       <div class="actions" id="viewActions"></div>
     </header>
     <div class="views" id="views"></div>
+    <section class="drawer" id="drawer" hidden></section>
     <footer class="status-bar" id="statusBar"></footer>
   </main>
+  <aside class="diff-panel" id="diffPanel" hidden></aside>
+  <div class="side-toggle-wrap"><button class="icon-btn side-toggle" id="sideToggle" title="Hide the sidebar (⌘B)"></button></div>
+  <div class="title-controls" id="titleControls"></div>
 </div>
 <div id="toasts"></div>
 <div id="voicePill" class="voice-pill" hidden></div>

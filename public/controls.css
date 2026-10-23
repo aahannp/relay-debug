@@ -113,20 +113,6 @@ textarea.input { resize: vertical; min-height: 84px; padding: 8px 11px; line-hei
 .toast.info .icon { color: var(--info); }
 .toast.out { opacity: 0; transform: translateY(8px) scale(.98); transition: .3s var(--ease); }
 
-.palette { width: 640px; padding: 0; }
-.pal-input { display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--hair); }
-.pal-input .icon { color: var(--dim); }
-.palette input { flex: 1; border: 0; background: none; padding: 14px 0; font-size: 15px; outline: none; }
-.palette input::placeholder { color: var(--dim); }
-.palette .list { max-height: 54vh; overflow: auto; padding: 8px; }
-.palette .menu-item { padding: 6px 8px; }
-.palette .menu-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
-.palette .menu-item.sel { background: color-mix(in srgb, var(--text) 9%, transparent); }
-.palette .empty { padding: 22px; color: var(--dim); text-align: center; }
-.pal-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--hair); background: color-mix(in srgb, var(--text) 2.5%, transparent); color: var(--dim); font-size: 12px; font-weight: 500; }
-.pal-foot span { display: inline-flex; gap: 6px; align-items: center; }
-.pal-foot kbd { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); }
-
 .voice-pill { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 65; display: flex; align-items: center; gap: 14px; min-width: 380px; max-width: 70vw; padding: 10px 10px 10px 18px; border-radius: 99px;
   background: var(--glass-strong); border: 1px solid color-mix(in srgb, var(--ring) 45%, transparent); box-shadow: var(--shadow-pop); backdrop-filter: blur(12px) saturate(1.14); animation: rise .2s ease-in-out; }
 .voice-pill .bars { display: flex; gap: 3px; align-items: center; height: 20px; }

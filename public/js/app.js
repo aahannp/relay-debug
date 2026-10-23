@@ -1,6 +1,6 @@
-// The app shell: navigation, projects, live updates from the server, the command palette and shortcuts.
-import { state, api, h, icon, avatar, on, emit, toast, guard, actions, command, commands, menu, modal, askText, confirmDialog, ago, baseName, ltr, projectSessions, projectTasks, projectChats, gridSessions, openSpaces, spaceSummary, chatTitle, DRAG, STATUS_LABEL } from './ui.js';
-import { THEMES, applyTheme } from './themes.js';
+// The app shell: navigation, projects, live updates from the server, the layout and shortcuts.
+import { state, api, h, icon, avatar, on, emit, toast, guard, actions, command, menu, modal, askText, confirmDialog, ago, baseName, ltr, projectSessions, projectTasks, projectChats, gridSessions, openSpaces, spaceSummary, chatTitle, DRAG, STATUS_LABEL } from './ui.js';
+import { applyTheme } from './themes.js';
 import * as agents from './agents.js';
 import * as board from './board.js';
 import * as files from './files.js';
@@ -10,6 +10,9 @@ import * as artifacts from './artifacts.js';
 import * as shots from './shots.js';
 import * as spend from './spend.js';
 import * as settings from './settings.js';
+import * as palette from './palette.js';
+import * as diff from './diff.js';
+import * as drawer from './drawer.js';
 import './voice.js';
 import './cursor.js';
 import './updates.js';
@@ -107,20 +110,46 @@ function showView(id) {
     $(`view-${v.id}`).classList.toggle('active', v.id === view.id);
     $(`nav-${v.id}`).classList.toggle('active', v.id === view.id);
   }
-  $('viewIcon').replaceChildren(icon(view.icon, 16));
-  $('viewTitle').textContent = view.label;
-  $('viewHint').textContent = view.hint;
   renderToolbar();
   view.module.show?.();
 }
 actions.showView = showView;
 actions.currentView = () => current;
 
+// The top bar: on the left a view's own title() (a breadcrumb) or else its icon, name and hint; on the right its toolbar().
+const crumbs = [...$('crumbs').children];
 function renderToolbar() {
   const view = VIEWS.find(v => v.id === current);
-  $('viewActions').replaceChildren(...(view?.module.toolbar?.() ?? []));
+  if (!view) return;
+  const title = view.module.title?.();
+  if (title) $('crumbs').replaceChildren(...[title].flat());
+  else {
+    $('crumbs').replaceChildren(...crumbs);
+    $('viewIcon').replaceChildren(icon(view.icon, 16));
+    $('viewTitle').textContent = view.label;
+    $('viewHint').textContent = view.hint;
+  }
+  $('viewActions').replaceChildren(...(view.module.toolbar?.() ?? []));
 }
 actions.renderToolbar = renderToolbar;
+
+// Thread (one chat at a time, like T3) or grid (every pane side by side). Kept per window in localStorage, since the
+// server's settings drop keys they don't know.
+const LAYOUT = 'agent-desk:layout';
+state.layout = (() => { try { return localStorage.getItem(LAYOUT) === 'grid' ? 'grid' : 'thread'; } catch { return 'thread'; } })();
+function setLayout(layout) {
+  state.layout = layout === 'grid' ? 'grid' : 'thread';
+  try { localStorage.setItem(LAYOUT, state.layout); } catch {}
+  applyLayout();
+  emit('layout', state.layout);
+}
+const applyLayout = () => {
+  const app = document.querySelector('.app');
+  app.classList.toggle('layout-thread', state.layout === 'thread');
+  app.classList.toggle('layout-grid', state.layout === 'grid');
+};
+actions.setLayout = setLayout;
+applyLayout();
 
 // Hiding the sidebar gives the panes the whole window. ⌘B, the button in the top bar, or Settings.
 function applySidebar() {
@@ -179,7 +208,7 @@ let spacesShown = '';
 function renderSpaces() {
   const el = $('spaces');
   const list = state.projects.map(p => {
-    const agents = state.sessions.filter(s => s.project === p.path && !s.exited && !s.artifactId);
+    const agents = state.sessions.filter(s => s.project === p.path && !s.exited && !s.artifactId && !s.drawerOf);
     return { p, agents, shown: agents.filter(s => !byAgent(s)), statuses: agents.map(s => actions.statusOf?.(s) ?? s.status) };
   });
   // This runs every second: rebuild only on a real change (a rebuild mid-click loses the click), and keep keyboard focus.
@@ -329,9 +358,9 @@ function buildSidebar() {
   const voice = $('voiceBtn');
   voice.querySelector('.mic').replaceWith(icon('mic', 15));
   voice.onclick = () => actions.toggleVoice();
-  const palette = $('paletteBtn');
-  palette.querySelector('.search').replaceWith(icon('search', 15));
-  palette.onclick = openPalette;
+  const paletteBtn = $('paletteBtn');
+  paletteBtn.querySelector('.search').replaceWith(icon('search', 15));
+  paletteBtn.onclick = () => actions.openPalette();
 }
 
 // ---------- Projects ----------
@@ -404,6 +433,10 @@ const removeProject = guard(async (path = state.project) => {
   await api('DELETE', `/api/projects?path=${encodeURIComponent(path)}`);
   toast('Removed from the list. No files were touched.', 'ok');
 });
+actions.removeProject = removeProject;
+
+// A new chat in a project. For now the same as a new agent; the thread view may replace it.
+actions.newChat ??= project => actions.newSession({ project });
 
 function showWelcome() {
   if (document.querySelector('.welcome')) return;
@@ -422,58 +455,10 @@ function showWelcome() {
   setTimeout(() => field.input.focus());
 }
 
-// ---------- Command palette ----------
-function openPalette() {
-  if (document.querySelector('.palette')) return;
-  const input = h('input', { placeholder: 'Search commands, agents, themes and projects…', spellcheck: false });
-  const list = h('div', { class: 'list' });
-  let items = [];
-  let selected = 0;
-  const all = () => [
-    ...commands,
-    ...VIEWS.map((v, i) => ({ title: `Go to ${v.label}`, icon: v.icon, sub: `⌘${i + 1}`, run: () => showView(v.id) })),
-    ...gridSessions().map(s => ({ title: `Show ${s.name}`, icon: 'terminal', sub: s.agent || s.kind, run: () => actions.focusSession(s.id) })),
-    ...(state.projects.length > 1 ? [{ title: 'Show every space side by side', icon: 'stack', run: () => showSpaces([state.project, ...state.projects.map(p => p.path)]) }] : []),
-    ...(openSpaces().length > 1 ? [{ title: 'Show only this space', icon: 'folder', run: () => switchProject(state.project) }] : []),
-    ...state.projects.filter(p => p.path !== state.project).map(p => ({ title: `Switch to ${p.name}`, icon: 'folder', sub: p.path.replace(state.info.home, '~'), run: () => switchProject(p.path) })),
-    ...(state.project ? [{ title: `Remove ${baseName(state.project)} from the spaces`, icon: 'x', sub: 'No files are touched', run: () => removeProject() }] : []),
-    ...Object.entries(THEMES).map(([id, t]) => ({ title: `Theme: ${t.name}`, icon: 'sparkles', run: () => actions.setSetting({ theme: id }) })),
-  ];
-  const select = i => {
-    list.children[selected]?.classList.remove('sel');
-    selected = i;
-    list.children[selected]?.classList.add('sel');
-    list.children[selected]?.scrollIntoView({ block: 'nearest' });
-  };
-  const render = () => {
-    const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-    items = all().filter(c => words.every(w => `${c.title} ${c.sub || ''}`.toLowerCase().includes(w))).slice(0, 80);
-    list.replaceChildren(...(items.length ? items.map((c, i) => h('button', { class: 'menu-item', onMousemove: () => selected !== i && select(i), onClick: () => run(c) },
-      icon(c.icon || 'chevronRight', 15), h('span', {}, c.title), c.sub && h('span', { class: 'sub' }, c.sub))) : [h('div', { class: 'empty' }, 'Nothing matches')]));
-    select(0);
-  };
-  const close = () => overlay.remove();
-  const run = c => { close(); c.run(); };
-  input.addEventListener('input', render);
-  input.addEventListener('keydown', e => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); select(Math.min(selected + 1, items.length - 1)); }
-    if (e.key === 'ArrowUp') { e.preventDefault(); select(Math.max(selected - 1, 0)); }
-    if (e.key === 'Enter' && items[selected]) run(items[selected]);
-    if (e.key === 'Escape') close();
-  });
-  const overlay = h('div', { class: 'overlay', onMousedown: e => e.target === overlay && close() }, h('div', { class: 'modal palette' },
-    h('div', { class: 'pal-input' }, icon('search', 18), input, h('kbd', {}, 'esc')), list,
-    h('div', { class: 'pal-foot' }, h('span', {}, h('kbd', {}, '↑'), h('kbd', {}, '↓'), 'move'), h('span', {}, h('kbd', {}, '↵'), 'run'), h('span', { class: 'grow' }), h('span', {}, 'Relay'))));
-  document.body.append(overlay);
-  render();
-  input.focus();
-}
-actions.openPalette = openPalette;
-
 document.addEventListener('keydown', e => {
   const mod = e.metaKey || e.ctrlKey;
   const key = e.key.toLowerCase();
-  if (mod && !e.shiftKey && key === 'k') { e.preventDefault(); e.stopPropagation(); openPalette(); }
+  if (mod && !e.shiftKey && key === 'k') { e.preventDefault(); e.stopPropagation(); actions.openPalette(); }
   else if (mod && e.shiftKey && key === 'm') { e.preventDefault(); e.stopPropagation(); actions.toggleVoice(); }
   else if (mod && !e.shiftKey && !e.altKey && key === 'b') { e.preventDefault(); e.stopPropagation(); toggleSidebar(); }
   else if (mod && !e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) { e.preventDefault(); e.stopPropagation(); showView(VIEWS[Number(e.key) - 1].id); }
@@ -498,6 +483,9 @@ command('New space (add a project folder)', () => addProject(), { icon: 'folder'
     views.append(section);
     v.module.mount(section);
   }
+  palette.mount(VIEWS);
+  diff.mount($('diffPanel'));
+  drawer.mount($('drawer'));
   buildSidebar();
   showView('agents');
   for (const kind of ['project', 'settings', 'projects', 'tasks', 'sessions', 'chats', 'artifacts', 'specialists']) emit(kind);

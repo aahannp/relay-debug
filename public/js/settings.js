@@ -14,10 +14,30 @@ const LANGUAGES = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['en-IN
   ['es-ES', 'Spanish'], ['fr-FR', 'French'], ['de-DE', 'German'], ['pt-BR', 'Portuguese (Brazil)'], ['ja-JP', 'Japanese']];
 let root;
 
+// The settings sections, for a nav beside the page. emit('settings:section', id) goes to one.
+export const SECTIONS = [
+  { id: 'general', label: 'General', icon: 'settings2' },
+  { id: 'appearance', label: 'Appearance', icon: 'palette' },
+  { id: 'agents', label: 'Agents', icon: 'bot' },
+  { id: 'team', label: 'Team', icon: 'users' },
+  { id: 'voice', label: 'Voice', icon: 'mic' },
+  { id: 'notifications', label: 'Notifications', icon: 'bell' },
+  { id: 'mcp', label: 'Claude Code', icon: 'blocks' },
+  { id: 'keyboard', label: 'Keyboard', icon: 'keyboard' },
+  { id: 'about', label: 'About', icon: 'info' },
+];
+
 export function mount(el) {
   root = h('div', { class: 'settings' });
   el.append(root);
   for (const kind of ['settings', 'specialists']) on(kind, () => actions.currentView() === 'settings' && render());
+  // Still one long page: scroll to the section whose heading names it (General is the top).
+  on('settings:section', id => {
+    const label = SECTIONS.find(x => x.id === id)?.label;
+    actions.showView('settings');
+    const heading = id !== 'general' && [...root.querySelectorAll('.card-section > h2')].find(x => x.textContent.includes(label));
+    (heading?.parentElement ?? root).scrollIntoView({ block: 'start' });
+  });
 }
 export const show = () => render();
 

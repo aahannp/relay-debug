@@ -12,6 +12,7 @@ const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(v
 const opened = new Set(stored(OPEN, []));
 const active = new Map(); // chat id -> the shell shown in its drawer
 const starting = new Set(); // chats whose first shell is on its way
+const failed = new Set(); // chats whose last shell failed to start: no retry on every focus change until ⌘J or New terminal
 let root, host, cluster, side, list;
 let thread = null; // the chat id of the thread whose drawer shows
 let height = stored(HEIGHT, 280);
@@ -30,7 +31,7 @@ export function mount(el) {
   root = el;
   host = h('div', { class: 'drawer-terms' });
   const btn = (name, label, onClick) => h('button', { type: 'button', class: 'drawer-btn', title: label, 'aria-label': label, onClick }, icon(name, 13));
-  const tools = () => [btn('plus', 'New terminal', () => addShell(thread)), btn('trash', 'Close terminal', () => closeShell(active.get(thread)))];
+  const tools = () => [btn('plus', 'New terminal', () => { failed.delete(thread); addShell(thread); }), btn('trash', 'Close terminal', () => closeShell(active.get(thread)))];
   cluster = h('div', { class: 'drawer-cluster' }, ...tools().flatMap((b, i) => (i ? [h('span', { class: 'drawer-sep' }), b] : [b])));
   list = h('div', { class: 'drawer-list', role: 'tablist', 'aria-label': 'Terminals', 'aria-orientation': 'vertical' });
   side = h('aside', { class: 'drawer-side' }, h('div', { class: 'drawer-side-head' }, ...tools()), list);
@@ -55,6 +56,7 @@ function toggle() {
   const chat = currentThread();
   if (!chat) return toast('Open a thread first, then ⌘J opens its terminal');
   const open = !opened.has(chat);
+  failed.delete(chat);
   opened[open ? 'add' : 'delete'](chat);
   store(OPEN, [...opened]);
   if (!open && root.contains(document.activeElement)) {
@@ -70,7 +72,7 @@ function render(focus = false) {
   root.hidden = !open;
   if (!open) return;
   const shells = shellsOf(thread);
-  if (!shells.length) return addShell(thread);
+  if (!shells.length) return failed.has(thread) || addShell(thread);
   if (!shells.some(s => s.id === active.get(thread))) active.set(thread, shells.at(-1).id);
   const current = active.get(thread);
   for (const s of shells) actions.dockPane(s, host, focus && s.id === current);
@@ -93,6 +95,9 @@ const addShell = guard(async chat => {
     const shell = await api('POST', '/api/sessions', { kind: 'shell', project: s.project, alongside: s.id, name: 'Terminal' });
     active.set(chat, shell.id);
     await actions.refresh('sessions');
+  } catch (e) {
+    failed.add(chat);
+    throw e;
   } finally {
     starting.delete(chat);
   }

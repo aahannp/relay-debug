@@ -12,7 +12,7 @@
 @container (min-width: 640px) { .chat-composer { padding-inline: 48px; } } /* lines up with chat.css's lane */
 .chat-composer-lane { max-width: 46rem; margin-inline: auto; pointer-events: auto; }
 
-.chat-card { position: relative; isolation: isolate; display: flex; flex-direction: column; border-radius: 24px;
+.chat-card { position: relative; z-index: 1; isolation: isolate; display: flex; flex-direction: column; border-radius: 24px;
   background: color-mix(in srgb, var(--composer-glass) 80%, transparent);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   box-shadow: var(--shadow-composer), inset 0 0 0 1px var(--composer-outline); }
@@ -57,14 +57,17 @@
 .chat-ring.warn .chat-ring-arc { stroke: var(--warn); }
 .chat-ring.bad .chat-ring-arc { stroke: var(--text); }
 
-/* The banner attached on top of the card, inset 22px each side: the glass tinted 8% warning, outlined at 28%. */
-.chat-dock { display: flex; flex-direction: column; gap: 8px; margin: 0 22px; padding: 8px 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+/* The banner attached on top of the card, inset 22px each side: the glass tinted 8% warning, outlined at 28%.
+   Like T3 it runs 17px down behind the card, its last 16px masked out, so its sides meet the card's curve with no notch. */
+.chat-dock { display: flex; flex-direction: column; gap: 8px; margin: 0 22px -17px; padding: 8px 8px 25px;
+  -webkit-mask-image: linear-gradient(to top, transparent 16px, #000 16px); mask-image: linear-gradient(to top, transparent 16px, #000 16px); border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
   border-bottom: 0; border-radius: 16px 16px 0 0; font-size: 12px; line-height: 16px;
   background: linear-gradient(color-mix(in srgb, var(--warn) 8%, transparent), color-mix(in srgb, var(--warn) 8%, transparent)), color-mix(in srgb, var(--composer-glass) 80%, transparent);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); }
 .chat-dock[data-kind="question"] { border-color: color-mix(in srgb, var(--info) 28%, transparent);
   background: linear-gradient(color-mix(in srgb, var(--info) 8%, transparent), color-mix(in srgb, var(--info) 8%, transparent)), color-mix(in srgb, var(--composer-glass) 80%, transparent); }
 .chat-dock[hidden] { display: none; }
+.chat-dock[data-kind="approval"] { padding: 12px 12px 29px; } /* T3's "spacious" density */
 .chat-dock.busy :is(.chat-dock-options, .chat-dock-actions) { opacity: .5; pointer-events: none; }
 .chat-dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--dim); font-size: 11px; }
 .chat-dock-head > .icon { flex: none; }
@@ -82,7 +85,7 @@
 .chat-dock-main code.chat-dock-body { padding: 0; background: none; border-radius: 0; font: 12px/16px var(--mono); }
 .chat-dock-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; align-self: center; }
 .chat-dock-actions .btn.primary { background: var(--info); border-color: var(--info); }
-@container (max-width: 560px) { .chat-dock-actions { grid-column: 2 / 4; justify-content: flex-start; } }
+@container (max-width: 560px) { .chat-dock-actions { grid-column: 2 / 4; } }
 
 /* A question or menu: T3's option rows, the label at 500 and a small description; the number key on the right. */
 .chat-dock-options { display: flex; flex-direction: column; gap: 2px; }

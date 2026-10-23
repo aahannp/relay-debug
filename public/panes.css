@@ -1,0 +1,107 @@
+/* ---------- Agents: terminal grid ---------- */
+/* One section per open space, stacked; with several, each gets a slim header and a fair share of the height (scrolling past that). */
+.stack { position: absolute; inset: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.space-section { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.space-section[hidden] { display: none; }
+.stack.many .space-section { min-height: 340px; }
+.stack.many .space-section:not(:first-child) { border-top: 1px solid var(--hair); }
+.space-head { display: none; align-items: center; gap: 8px; height: 38px; flex-shrink: 0; padding: 8px 14px 0 18px; color: var(--dim); }
+.stack.many .space-head { display: flex; }
+.space-head-name { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.space-head .space-sum { min-width: 0; }
+.space-head .icon-btn[hidden] { display: none; }
+.space-note { display: none; padding: 4px 18px 14px; font-size: 12px; color: var(--dim); }
+.stack.many .space-section.empty { flex: 0 0 auto; min-height: 0; }
+.stack.many .space-section.empty .space-note { display: block; }
+.space-section.empty .grid { display: none; }
+.grid { position: relative; flex: 1; min-height: 0; display: grid; gap: 12px; padding: 12px; }
+.stack.solo .space-section:not(:has(.pane.max)), .stack.solo .space-head { display: none; }
+.stack.solo .space-section { flex: 1 1 0; min-height: 0; }
+.stack.solo .pane:not(.max) { display: none; }
+.stack.solo .pane.max { grid-area: 1 / 1 / -1 / -1; }
+.pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden;
+  background: var(--term-bg, var(--bg)); border: 1px solid var(--hair-strong); box-shadow: var(--shadow-sm), var(--lift);
+  transition: border-color .25s, box-shadow .25s; animation: paneIn .35s var(--ease); }
+@keyframes paneIn { from { opacity: 0; transform: scale(.985); } }
+.pane.hidden { display: none; }
+.pane.focus { border-color: transparent; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent), 0 0 0 5px var(--accent-soft); }
+.pane.attn { border-color: transparent; box-shadow: 0 0 0 1px var(--warn), 0 0 0 5px color-mix(in srgb, var(--warn) 14%, transparent); animation: attn 1.6s ease-in-out infinite; }
+@keyframes attn { 50% { box-shadow: 0 0 0 1px var(--warn), 0 0 0 9px transparent; } }
+.pane-head { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 8px 0 10px; flex-shrink: 0; user-select: none;
+  background: var(--panel); border-bottom: 1px solid var(--hair); }
+.pane-titles { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; flex: 1; }
+.pane-title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; letter-spacing: -.01em; }
+.pane-sub { font: 10.5px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; min-width: 0; }
+.pane-sub .sep { opacity: .4; }
+.pane-sub button { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; }
+.pane-tools { display: flex; align-items: center; gap: 2px; }
+/* The context meter on a Claude pane: quiet until the context fills (amber over 70%, red over 90%). On a narrow pane the
+   cost goes first, then the whole meter, so the title keeps its room. */
+.pane-head { container-type: inline-size; }
+.meter { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; font: 500 10.5px var(--mono); font-variant-numeric: tabular-nums;
+  color: var(--dim); white-space: nowrap; border-radius: 6px; cursor: default; }
+.meter[hidden] { display: none; }
+.meter-bar { width: 26px; height: 4px; border-radius: 2px; background: var(--soft); overflow: hidden; }
+.meter-bar::before { content: ''; display: block; width: var(--fill, 0%); height: 100%; border-radius: inherit; background: color-mix(in srgb, currentColor 70%, transparent); }
+.meter-cost { padding-left: 7px; border-left: 1px solid var(--hair-strong); }
+.meter.warn { color: var(--warn); }
+.meter.bad { color: var(--bad); }
+.meter.warn .meter-cost, .meter.bad .meter-cost { color: var(--dim); }
+@container (max-width: 520px) { .meter-cost { display: none; } }
+@container (max-width: 400px) { .meter { display: none; } }
+/* The Chat | Terminal switch on a Claude pane. Monochrome: the chosen segment is raised with --soft, never the accent. */
+.view-switch { display: inline-flex; flex-shrink: 0; padding: 2px; gap: 2px; border-radius: 9px; background: var(--softer); border: 1px solid var(--hair); }
+.seg { height: 22px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--dim); font-size: 11.5px; font-weight: 600; transition: background .2s, color .2s; }
+.seg:hover { color: var(--text); }
+.seg[aria-pressed="true"] { background: var(--soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--hair-strong); }
+.seg:focus-visible { outline-color: var(--text); outline-offset: 0; }
+/* In chat mode the context ring lives in the composer, so the header meter would show it twice. */
+.pane.chat-mode .pane-head .meter { display: none; }
+/* Narrow header: the state pill keeps its dot (its title names it) and the avatar steps aside, so the switch keeps both
+   labels and the agent's name keeps some room. */
+@container (max-width: 420px) {
+  .pane-head { gap: 6px; }
+  .pane-head > span:first-child { display: none; }
+  .pane-head .state { padding: 0 7px; }
+  .pane-head .state > span:not(.dot) { display: none; }
+  .seg { padding: 0 8px; }
+}
+.pane-body { position: relative; flex: 1; min-height: 0; display: flex; }
+/* content-box: xterm's fit addon reads this box's CSS width and height as the space to fill, so the padding must not be
+   counted in them, or the last column slides under the scrollbar and the bottom row past the edge. */
+.term-host { flex: 1; min-width: 0; padding: 10px 6px 6px 12px; box-sizing: content-box; }
+.term-host .xterm { height: 100%; overflow: hidden; } /* clips rows sliding past the top and bottom while scrolling */
+.term-peek { position: absolute; left: 0; right: 0; visibility: hidden; pointer-events: none; }
+.term-peek .xterm { height: auto; }
+.term-host .xterm-viewport { scrollbar-width: thin; background-color: transparent; } /* xterm.css paints it black, and it shows below the last row */
+/* Drop markers while dragging a chat or a pane into the grid. */
+.pane.drop-before { box-shadow: inset 4px 0 0 var(--accent), 0 0 0 1px var(--accent); }
+.pane.drop-after { box-shadow: inset -4px 0 0 var(--accent), 0 0 0 1px var(--accent); }
+.grid.one-col .pane.drop-before { box-shadow: inset 0 4px 0 var(--accent), 0 0 0 1px var(--accent); }
+.grid.one-col .pane.drop-after { box-shadow: inset 0 -4px 0 var(--accent), 0 0 0 1px var(--accent); }
+.grid.drop-end { outline: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: -6px; border-radius: 18px; }
+.pane.dragging { opacity: .45; }
+.pane-head[draggable="true"] { cursor: grab; }
+.exit-bar { display: none; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--hair); background: var(--glass); font-size: 12px; color: var(--dim); }
+.pane.exited .exit-bar { display: flex; }
+.pane.exited .term-host { opacity: .65; filter: saturate(.6); }
+.pane iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+.url-input { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--hair-strong); border-radius: 9px; background: color-mix(in srgb, var(--bg) 70%, transparent); padding: 0 11px; font: 12px var(--mono); outline: none; transition: border-color .2s, box-shadow .2s; }
+.url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.blocks { width: 300px; border-left: 1px solid var(--hair); background: var(--glass); backdrop-filter: blur(20px); display: none; flex-direction: column; min-height: 0; }
+.pane.show-blocks .blocks { display: flex; animation: slide .25s var(--ease); }
+.blocks-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 650; border-bottom: 1px solid var(--hair); }
+.blocks-list { overflow: auto; flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.block-row { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+.block-row:hover { background: var(--softer); border-color: var(--hair); }
+.block-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-row .ms { font: 10.5px var(--mono); color: var(--dim); }
+.block-row .st { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; }
+.block-row.ok .st { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.block-row.bad .st { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.block-row .icon-btn { opacity: 0; } .block-row:hover .icon-btn { opacity: 1; }
+.block-line { width: 100% !important; left: 0 !important; border-top: 1px solid color-mix(in srgb, var(--text) 9%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ok) 75%, transparent); pointer-events: none; }
+.block-line.bad { box-shadow: inset 2px 0 0 var(--bad); background: color-mix(in srgb, var(--bad) 5%, transparent); }
+.blocks-empty { color: var(--dim); padding: 16px; font-size: 12px; line-height: 1.6; }
+

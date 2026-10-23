@@ -48,6 +48,8 @@ assert.deepEqual(migrated({ mixFolders: true, lastProject: '/x/b', openSpaces: [
 assert.deepEqual(migrated({ mixFolders: false, openSpaces: [] }, [spA, spB]).openSpaces, [], 'off: just the current one');
 assert.ok(!('mixFolders' in migrated({ mixFolders: true }, [spA])), 'the old switch is gone');
 assert.deepEqual(migrated({ openSpaces: ['/x/a', '/gone', '/x/a', '/x/b'] }, [spA, spB]).openSpaces, ['/x/a', '/x/b'], 'removed folders and repeats drop out');
+assert.deepEqual([migrated({ theme: 'midnight', accent: '#ff3ea5' }).theme, 'accent' in migrated({ accent: '' })], ['t3dark', false], 'pre-T3 data: the old default theme becomes T3 Dark and the accent setting is dropped');
+assert.equal(migrated({ theme: 'nord', accent: '' }).theme, 'nord', 'a theme you picked yourself stays');
 assert.ok(desk.token.length >= 32, 'an empty token file is replaced with a real secret');
 assert.ok(!fs.existsSync(path.join(tmp, 'data', 'mcp', 'gone1234.json')), "a session's MCP file never outlives a restart");
 let SELF = `http://127.0.0.1:${desk.port}`;

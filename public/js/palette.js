@@ -22,10 +22,10 @@ function topActions(used) {
   };
   const grid = state.layout === 'grid';
   return [
-    { title: 'New thread', icon: 'squarePen', run: () => actions.newChat(state.project) },
+    cmd('New thread', { run: () => actions.newChat(state.project) }),
     cmd('New shell', { icon: 'terminalSquare' }),
     cmd('New space (add a project folder)', { title: 'Add project', icon: 'folderPlus' }),
-    { title: 'Toggle terminal', icon: 'panelBottom', kbd: '⌘J', run: () => actions.toggleDrawer() },
+    cmd('Toggle terminal', { icon: 'panelBottom', kbd: '⌘J', sub: '' }),
     { title: 'Toggle diff', icon: 'fileDiff', kbd: '⌘D', run: () => actions.toggleDiff() },
     { title: grid ? 'Thread view' : 'Grid view', icon: grid ? 'squareMenu' : 'layoutGrid', run: () => actions.setLayout(grid ? 'thread' : 'grid') },
     cmd('Toggle voice input', { title: 'Voice', icon: 'mic', kbd: '⌘⇧M', sub: '' }),

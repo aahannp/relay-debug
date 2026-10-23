@@ -70,6 +70,7 @@ export function applyTheme() {
   root.style.setProperty('--info', t.term.blue);
   root.style.setProperty('--term-bg', t.term.background);
   root.dataset.mode = t.dark ? 'dark' : 'light';
+  root.dataset.theme = THEMES[state.settings.theme] ? state.settings.theme : 't3dark';
   state.theme = t;
   state.termTheme = { ...t.term, cursor: ring, cursorAccent: t.term.background, selectionBackground: `${ring}55` };
   emit('theme');

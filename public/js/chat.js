@@ -15,6 +15,12 @@ const label = text => text.split('`').map((t, i) => (i % 2 ? h('code', {}, t) : 
 // "[Message from leader (agent 15fd8a11)]\n…" (sessions.mjs sign()): who sent it goes above the bubble, not in it.
 const SIGNED = /^\[(Message|Report|Question|Answer) from ([^\]\n]+)\]\n?/;
 const clock = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// T3's work-log row: the tool's icon, its label, a chevron at the far right.
+const TOOL_ICONS = { Read: 'eye', Edit: 'squarePen', MultiEdit: 'squarePen', Write: 'squarePen', NotebookEdit: 'squarePen', Bash: 'terminal',
+  Grep: 'search', Glob: 'search', WebFetch: 'globe', WebSearch: 'globe', Task: 'bot', Agent: 'bot' };
+const toolIcon = entry => (entry.kind === 'thinking' ? 'sparkles' : TOOL_ICONS[entry.name] ?? 'zap');
+const summary = (entry, ...rest) => h('summary', {}, h('span', { class: 'chat-tool-icon' }, icon(toolIcon(entry), 16)), ...rest,
+  h('span', { class: 'chat-chevron' }, icon('chevronRight', 12)));
 const copyButton = (text, title = 'Copy') => h('button', { class: 'icon-btn chat-copy', title, 'aria-label': title, onClick: () => copy(text()) }, icon('copy', 12));
 
 // A long message shows its first 11rem with a fade and "Show full message" below. Measured once it's laid out, so a hidden pane is fine.
@@ -177,11 +183,11 @@ export function chatView(p) {
   // A group of one shows its entry's own row; from two on, one line ("Read 2 files and ran 1 command") that opens to the entries.
   function work(it) {
     if (!group) {
-      const g = { entries: [], text: h('span', { class: 'chat-label' }), mark: h('span', { class: 'chat-mark bad' }) };
+      const g = { entries: [], text: h('span', { class: 'chat-label' }), mark: h('span', { class: 'chat-mark bad' }), icon: h('span', { class: 'chat-tool-icon' }) };
       g.head = h('button', { class: 'chat-group-head', 'aria-expanded': 'false', onClick: () => {
         g.head.setAttribute('aria-expanded', String(g.head.getAttribute('aria-expanded') !== 'true'));
         refresh(g);
-      } }, g.text, g.mark, icon('chevronDown', 14));
+      } }, g.icon, g.text, g.mark);
       g.body = h('div', { class: 'chat-group-body' });
       g.el = h('div', { class: 'chat-group' }, g.head, g.body);
       list.append(g.el);
@@ -190,14 +196,14 @@ export function chatView(p) {
     const entry = { kind: it.kind, name: it.name, label: it.label ?? '', done: it.kind === 'thinking', error: false };
     group.entries.push(entry);
     if (it.kind === 'thinking') {
-      group.body.append(h('details', { class: 'chat-fold' }, h('summary', {}, h('span', { class: 'chat-label' }, 'Thought')),
+      group.body.append(h('details', { class: 'chat-fold' }, summary(entry, h('span', { class: 'chat-label' }, 'Thought')),
         h('div', { class: 'chat-thought' }, it.text)));
     } else {
       const mark = h('span', { class: 'chat-mark' });
       const body = h('div', { class: 'chat-tool-body' }, it.detail && h('pre', {}, it.detail));
       tools.set(it.id, { mark, body, entry, group });
       group.body.append(h('details', { class: 'chat-fold chat-tool', 'data-tool': it.id },
-        h('summary', {}, h('span', { class: 'chat-label' }, label(entry.label)), mark), body));
+        summary(entry, h('span', { class: 'chat-label' }, label(entry.label)), mark), body));
     }
     refresh(group);
   }
@@ -211,6 +217,7 @@ export function chatView(p) {
     if (!many) return;
     const { label: said, failed } = summarize(g.entries);
     const now = g.entries.at(-1);
+    g.icon.replaceChildren(icon(toolIcon(now), 16));
     g.text.replaceChildren(...(status === 'working' && !now.done ? label(`${now.label.replace(/^Ran /, 'Running ')}…`) : [said]));
     g.mark.textContent = failed ? `✗ ${failed} failed` : '';
   }
@@ -265,7 +272,7 @@ export function chatView(p) {
     waiting.delete(it.id);
     const t = tools.get(it.id);
     if (!t) return;
-    t.mark.textContent = it.error ? '✗' : '✓';
+    t.mark.replaceChildren(it.error ? icon('x', 12) : ''); // T3: no tick for success, a cross on failure
     t.mark.classList.toggle('bad', it.error);
     t.mark.setAttribute('aria-label', it.error ? 'failed' : 'done');
     if (t.entry) {

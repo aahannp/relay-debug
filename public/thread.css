@@ -29,7 +29,7 @@
 .crumb-current:hover svg, .crumb-current:focus-visible svg { opacity: 1; }
 .crumb-rename { min-width: 0; width: 20rem; max-width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 4px; outline: none; background: none; color: var(--text);
   font: inherit; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring, var(--info)) 50%, transparent); }
-.thread-none { color: var(--dim); font-size: 14px; font-weight: 500; }
+.thread-none { color: color-mix(in srgb, var(--dim) 60%, transparent); font-size: 14px; font-weight: 500; }
 
 /* With no thread on screen: the hero (no projects), "Pick a thread", or a new thread's draft. */
 .thread-state { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow-y: auto; container-type: inline-size; }
@@ -37,7 +37,7 @@
 .thread-empty { max-width: 32rem; padding: 48px 32px; text-align: center; }
 .thread-empty h1 { margin: 0; font: 600 24px/1.25 var(--display); letter-spacing: -.02em; }
 .thread-empty h2 { margin: 0; font: 600 20px/1.4 var(--display); }
-.thread-empty p { margin: 4px 0 0; color: var(--dim); font-size: 14px; line-height: 1.5; }
+.thread-empty p { margin: 4px 0 0; color: var(--dim); font-size: 14px; line-height: 20px; text-wrap: balance; }
 .thread-empty .btn { margin-top: 24px; }
 @media (min-width: 640px) { .thread-empty h1 { font-size: 30px; } }
 

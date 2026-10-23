@@ -32,34 +32,31 @@
 .chat-copy { width: 22px; height: 22px; border-radius: 6px; }
 
 /* Claude's words: a plain column. */
-.chat-text { font-size: 14px; line-height: 1.625; }
+.chat-text { padding: 2px 4px; font-size: 14px; line-height: 1.625; }
 .chat-text > .chat-meta { margin-top: 2px; }
 .chat-note { color: var(--dim); font-size: 12px; }
 .chat-note code { color: var(--text); }
 
-/* The work log: one line per group over a soft rule, its chevron after the words; the entries open beneath, scrolling past min(18rem, 50dvh). */
-.chat-group-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 0 8px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  border-radius: 0; background: none; color: var(--dim); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
-.chat-group-head:hover { color: var(--text); }
-.chat-group-head > .chat-label { flex: 0 1 auto; color: inherit; }
-.chat-group-head > .icon { flex: none; transform: rotate(-90deg); transition: transform .15s; }
-.chat-group-head[aria-expanded="true"] > .icon { transform: none; }
+/* The work log (T3 WorkLog): 24px rows of tool icon, muted 14px label, chevron at the far right; a group of two or more is one such row that opens to the entries. */
+.chat-group-head, .chat-fold > summary { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 2px; border: 0; border-radius: 8px;
+  background: none; color: var(--dim); font: inherit; font-size: 14px; line-height: 1.625; text-align: left; cursor: pointer; list-style: none; }
+.chat-group-head:hover, .chat-fold > summary:hover { color: var(--text); }
 .chat-group-head:focus-visible, .chat-fold > summary:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: -2px; }
-.chat-group-body { display: flex; flex-direction: column; }
-.chat-group.many .chat-group-body { margin: 2px 0 2px 10px; padding-left: 8px; border-left: 1px solid var(--hair); max-height: min(18rem, 50dvh); overflow-y: auto; }
-.chat-group.many .chat-group-body:has(> details[open]) { max-height: none; }
-.chat-fold > summary { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 4px; border-radius: 6px; cursor: pointer;
-  color: var(--dim); font-size: 12px; list-style: none; }
-.chat-fold > summary::before { content: '›'; flex: none; width: 12px; text-align: center; transition: transform .15s; }
-.chat-fold[open] > summary::before { transform: rotate(90deg); }
 .chat-fold > summary::-webkit-details-marker { display: none; }
-.chat-fold > summary:hover { color: var(--text); }
-.chat-thought { padding: 2px 4px 8px 22px; color: var(--dim); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
-.chat-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.chat-label code { font-size: 11.5px; }
-.chat-mark { flex: none; color: var(--dim); }
-.chat-mark.bad { color: var(--text); font-weight: 600; }
-.chat-tool-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 4px 8px 22px; }
+.chat-tool-icon { flex: none; display: flex; color: var(--dim); }
+.chat-chevron { flex: none; display: flex; justify-content: center; width: 16px; margin-left: auto; opacity: .7; transition: transform .2s; }
+.chat-fold[open] > summary .chat-chevron { transform: rotate(90deg); }
+.chat-group-body { display: flex; flex-direction: column; }
+.chat-group.many .chat-group-body { padding-bottom: 4px; max-height: min(18rem, 50dvh); overflow-y: auto; border-radius: 8px; }
+.chat-group.many .chat-group-body:has(> details[open]) { max-height: none; }
+.chat-group.many .chat-fold > summary { padding-block: 0; }
+.chat-thought { padding: 4px 2px 4px 28px; color: var(--dim); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.chat-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
+.chat-label code { font-size: 12px; }
+.chat-mark { flex: none; display: flex; color: var(--dim); }
+.chat-mark.bad { color: var(--bad); }
+.chat-mark.bad:empty { display: none; }
+.chat-tool-body { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px 4px 28px; }
 .chat-tool-body pre { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--term-bg); border: 1px solid var(--hair); overflow: auto; max-height: 320px;
   font: 11px/1.5 var(--mono); white-space: pre; }
 .chat-tool-body pre.bad { border-color: var(--hair-strong); border-left-width: 3px; }
@@ -81,10 +78,10 @@
 .chat-ask-answer { color: var(--dim); font-size: 12px; }
 
 /* "Working for 12s" while Claude works, then a "Worked for 44s" divider when the turn ends. */
-.chat-working, .chat-turn { padding: 4px 4px 8px; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
-.chat-working { display: flex; align-items: center; height: 24px; padding: 0 4px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.chat-working, .chat-turn { padding: 4px 4px 8px; color: var(--dim); font-size: 14px; line-height: 1.625; font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.chat-working { display: flex; align-items: center; height: 24px; box-sizing: content-box; }
 .chat-working[hidden] { display: none; }
-.chat-turn { border-bottom: 1px solid var(--hair); }
 
 .chat-compact { text-align: center; color: var(--dim); font-size: 12px; }
 .chat-compact > summary { cursor: pointer; display: flex; align-items: center; gap: 10px; list-style: none; }
@@ -114,4 +111,4 @@
 .chat-more:hover { color: var(--text); }
 .chat-more[hidden] { display: none; }
 .chat-more:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .chat-fold > summary::before, .chat-group-head > .icon, .chat-meta { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .chat-chevron, .chat-meta { transition: none; } }

@@ -218,11 +218,11 @@ on('project', () => scoped() && scoped() !== state.project && setScope(state.pro
 const projectName = path => state.projects.find(p => p.path === path)?.name ?? baseName(path);
 // T3's ProjectMonogram: the first letter on a faint square of its own colour.
 const monogram = name => h('span', { class: 'monogram', 'aria-hidden': 'true' }, ([...String(name).trim()][0] ?? '?').toUpperCase());
-// "just now", "5m", "3h", "2d", as T3 labels a thread.
+// "now", "5m", "3h", "2d": T3's sidebar label, its " ago" trimmed.
 const since = t => {
   if (!t) return '';
   const m = Math.floor((Date.now() - t) / 60000);
-  return m < 1 ? 'just now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+  return m < 1 ? 'now' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
 };
 
 let query = ''; // the search box, lower-cased
@@ -329,11 +329,31 @@ function threadList() {
   ];
 }
 
-// In Settings the list gives way to its sections (T3's settings sidebar), and the footer to Back.
-const settingsNav = () => [h('nav', { class: 'side-sections', 'aria-label': 'Settings sections' }, settings.SECTIONS.map(x => h('button', {
+// In Settings the list gives way to its sections (T3's settings sidebar), and the footer to Back. A search shows matching settings instead.
+let setHits = null; // null: no query
+const setKbd = h('kbd', { 'aria-hidden': 'true' }, '/');
+const setSearch = h('input', {
+  class: 'side-search-input', type: 'search', placeholder: 'Search', 'aria-label': 'Search settings', spellcheck: false,
+  onInput: () => { const q = setSearch.value.trim().toLowerCase(); setHits = q ? settings.find(q) : null; setKbd.hidden = Boolean(setSearch.value); renderSide(); },
+  onKeydown: e => {
+    if (e.key === 'Escape' && setSearch.value) { e.preventDefault(); e.stopPropagation(); setSearch.value = ''; setSearch.dispatchEvent(new Event('input')); }
+    else if (e.key === 'Enter') sideBody.querySelector('.side-row')?.click();
+  },
+});
+const setHead = h('div', { class: 'side-head', hidden: true },
+  h('div', { class: 'side-search', onClick: e => e.target === e.currentTarget && setSearch.focus() }, icon('search', 16), setSearch, setKbd));
+document.addEventListener('keydown', e => { // "/" jumps to it, as in T3
+  if (e.key !== '/' || e.metaKey || e.ctrlKey || current !== 'settings' || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+  e.preventDefault();
+  setSearch.focus();
+});
+const settingsHits = () => (setHits.length ? [h('nav', { class: 'side-sections', 'aria-label': 'Matching settings' }, setHits.map((x, i) => h('button', {
+  class: 'side-row side-hit', 'data-key': `hit:${i}`, onClick: () => settings.reveal(x),
+}, h('span', {}, x.title), h('span', { class: 'side-hit-sub' }, x.where))))] : [h('p', { class: 'side-empty', role: 'status' }, 'No settings found')]);
+const settingsNav = () => (setHits ? settingsHits() : [h('nav', { class: 'side-sections', 'aria-label': 'Settings sections' }, settings.SECTIONS.map(x => h('button', {
   class: `side-row${x.id === section ? ' active' : ''}`, 'data-key': `section:${x.id}`, 'aria-current': x.id === section ? 'true' : null,
   onClick: () => { section = x.id; emit('settings:section', x.id); renderSide(); },
-}, icon(x.icon, 16), h('span', {}, x.label))))];
+}, icon(x.icon, 16), h('span', {}, x.label))))]);
 
 const footIcon = (name, label, onClick) => h('button', { class: 'icon-btn side-icon', 'data-key': `foot:${label}`, 'aria-label': label, title: label, onClick }, icon(name, 16));
 function moreMenu(anchor) {
@@ -358,6 +378,7 @@ let sideShown = '';
 function renderSide() {
   if (sidebarDrag) return;
   sideHead.hidden = current === 'settings';
+  setHead.hidden = current !== 'settings';
   const body = current === 'settings' ? settingsNav() : threadList();
   const foot = footer();
   const html = [...body, ...foot].map(n => n.outerHTML).join('');
@@ -494,7 +515,7 @@ on('project', renderChrome); // the new project lights up at once, not after the
 on('layout', renderSide);
 
 function buildSidebar() {
-  side.replaceChildren(side.querySelector('.side-top'), sideHead, sideBody, sideFoot, rail);
+  side.replaceChildren(side.querySelector('.side-top'), sideHead, setHead, sideBody, sideFoot, rail);
 }
 
 // ---------- Projects ----------

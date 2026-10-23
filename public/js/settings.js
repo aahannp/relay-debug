@@ -1,7 +1,7 @@
 // Settings view: themes, agents and their guardrails, voice, notifications, and the MCP setup for your own Claude Code.
 // One section at a time, laid out like T3's settings pages (SettingsSection, SettingsGroup, SettingsRow).
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
-import { state, api, h, icon, avatar, on, actions, copy, guard, modal, toast, confirmDialog } from './ui.js';
+import { state, api, h, icon, avatar, on, emit, actions, copy, guard, modal, toast, confirmDialog } from './ui.js';
 import { modelSelect, effortSelect } from './agents.js';
 import { openUpdates } from './updates.js';
 import { THEMES } from './themes.js';
@@ -210,6 +210,16 @@ const PAGES = {
 
 function render() {
   root.replaceChildren(h('div', { class: 'settings-inner' }, ...PAGES[section](state.settings)));
+}
+
+// T3's settings search: every row's title and description, across the sections. Built off-screen, only as you type.
+export const find = q => SECTIONS.flatMap(x => [...h('div', {}, ...PAGES[x.id](state.settings)).querySelectorAll('.setting .label')]
+  .map(l => ({ section: x.id, where: x.label, title: l.querySelector('h3').textContent, text: l.querySelector('p')?.textContent ?? '' })))
+  .filter(r => `${r.title} ${r.text} ${r.where}`.toLowerCase().includes(q));
+// Open a hit's section and bring its row into view.
+export function reveal(hit) {
+  emit('settings:section', hit.section);
+  [...root.querySelectorAll('.setting .label h3')].find(t => t.textContent === hit.title)?.closest('.setting').scrollIntoView({ block: 'center' });
 }
 
 // A switch plus three small numbers: when to compact a lead (a % of a window in thousands of tokens), and after

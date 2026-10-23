@@ -1,5 +1,6 @@
 // Agents view: every agent, shell and browser pane for the project, tiled in a grid of real terminals.
 import { state, api, h, icon, avatar, on, emit, toast, guard, actions, command, commands, menu, askText, modal, confirmDialog, agentLabel, shortBranch, baseName, copy, chatTitle, meterView, openSpaces, spaceSummary, DRAG, MONO, STATUS_LABEL } from './ui.js';
+import { chatView } from './chat.js';
 
 const panes = new Map(); // id -> pane (a session's terminal, or a browser)
 const seen = new Map(); // session id -> last status we told you about
@@ -21,6 +22,9 @@ const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(v
 const hidden = new Set();
 const hiddenKeys = new Set(stored(HIDDEN, '[]'));
 let maxKey = stored(MAX, 'null'); // the pane that was maximised, until it shows up again
+// Claude panes you switched to Chat, by chat id like the hidden ones. Terminal is the default.
+const CHAT = 'agent-desk:chat-view';
+const chatKeys = new Set(stored(CHAT, '[]'));
 const keyOf = id => (s => s?.chatId ?? s?.shellId ?? id)(panes.get(id)?.session);
 
 export function mount(root) {
@@ -349,6 +353,7 @@ function tick() {
     p.state.className = `state ${status}`;
     p.dot.className = `dot ${status}`;
     p.stateText.textContent = STATUS_LABEL[status] ?? status;
+    p.chat?.setStatus(status);
   }
   renderSectionHeads();
   emit('tick');
@@ -498,10 +503,12 @@ function terminalPane(s, parent) {
   const blocks = h('div', { class: 'blocks' });
   const exitBar = h('div', { class: 'exit-bar' });
   const id = s.id;
+  const chatBtn = s.kind === 'agent' && s.agent === 'claude' && h('button', { class: 'icon-btn', onClick: () => p.showChat(!el.classList.contains('chat-mode')) });
   const blocksBtn = s.kind === 'shell' && h('button', { class: 'icon-btn', title: 'Command blocks', onClick: () => blocksBtn.classList.toggle('on', el.classList.toggle('show-blocks')) }, icon('list', 15));
   const head = h('div', { class: 'pane-head', draggable: true, title: 'Drag to move this pane', onDragstart: e => dragPane(e, id), onDragend: () => el.classList.remove('dragging'), onDblclick: e => !e.target.closest('button') && toggleMaximise(id) },
     face, h('div', { class: 'pane-titles' }, title, sub), meter, state_,
     h('div', { class: 'pane-tools' },
+      chatBtn,
       blocksBtn,
       s.chatId && h('button', { class: 'icon-btn', title: 'Name this agent', onClick: () => renameAgent(s) }, icon('pen', 13)),
       h('button', { class: 'icon-btn', title: 'Hide from the grid (it keeps running)', onClick: () => hidePane(id) }, icon('eyeOff', 14)),
@@ -537,8 +544,26 @@ function terminalPane(s, parent) {
   p.peek = smoothScroll(term, host);
   new ResizeObserver(() => p.fit()).observe(host);
   if (s.kind === 'shell') commandBlocks(p);
+  if (chatBtn) {
+    p.chat = chatView(p);
+    p.chat.el.addEventListener('focusin', () => setFocus(id));
+    el.querySelector('.pane-body').append(p.chat.el);
+    // The terminal stays mounted under the chat: hidden, fit() leaves the PTY its size, so Claude's screen is untouched.
+    p.showChat = (on, focus = true) => {
+      el.classList.toggle('chat-mode', on);
+      chatBtn.replaceChildren(icon(on ? 'terminal' : 'message', 14));
+      chatBtn.title = on ? 'Show the terminal' : 'Show as a chat';
+      chatBtn.setAttribute('aria-label', chatBtn.title);
+      chatKeys[on ? 'add' : 'delete'](keyOf(id));
+      store(CHAT, [...chatKeys]);
+      if (on) p.chat.show();
+      else { p.chat.hide(); p.fit(); }
+      if (focus) focusPane(p);
+    };
+  }
   connect(p);
   panes.set(id, p);
+  p.showChat?.(chatKeys.has(keyOf(id)), false);
   layout();
   return p;
 }
@@ -553,6 +578,7 @@ function connect(p) {
     if (first) { p.term.reset(); first = false; }
     p.term.write(e.data);
     p.lastData = Date.now();
+    p.chat?.poke(); // Claude redraws its screen whenever it writes the transcript
   };
   ws.onclose = () => {
     if (panes.get(p.id) === p && !p.session.exited) setTimeout(() => panes.get(p.id) === p && connect(p), 1500);
@@ -615,7 +641,7 @@ actions.dockPane = (s, parent, focus = false) => {
   if (p.el.parentNode !== parent) parent.append(p.el);
   p.session = s;
   renderHead(p);
-  requestAnimationFrame(() => { p.fit(); if (focus) p.term.focus(); });
+  requestAnimationFrame(() => { p.fit(); if (focus) focusPane(p); });
   return p.el;
 };
 
@@ -629,9 +655,10 @@ function focusSession(id) {
   actions.showView('agents');
   if (stack.classList.contains('solo') && !p.el.classList.contains('max')) toggleMaximise(id);
   setFocus(id);
-  setTimeout(() => p.term.focus());
+  setTimeout(() => focusPane(p));
 }
 actions.focusSession = focusSession;
+const focusPane = p => (p.el.classList.contains('chat-mode') ? p.chat.focus() : p.term.focus());
 
 // Type into a session's terminal (voice and screenshots use this). Enter is sent separately.
 actions.typeInto = (id, text, submit = false) => {
@@ -665,6 +692,7 @@ const closePane = guard(async id => {
   if (!p.session.exited && !(await confirmDialog(`Stop "${chatTitle(p.session)}"?`, `This ends the process running in this pane.${keeps}`, { label: 'Stop', danger: true }))) return;
   await api('DELETE', `/api/sessions/${id}`);
   if (hiddenKeys.delete(keyOf(id))) store(HIDDEN, [...hiddenKeys]);
+  if (chatKeys.delete(keyOf(id))) store(CHAT, [...chatKeys]);
   dispose(id);
   actions.refresh('sessions');
 });

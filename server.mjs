@@ -336,6 +336,11 @@ route('GET', '/api/chats/:id/chat', ({ req, params, query }) => { // a closed pa
   return S.chatConversation(chat, Math.min(Number(query.get('last')) || 30, 200));
 });
 route('GET', '/api/sessions/:id/chat', ({ req, params, query }) => S.conversation(sameProject(req, params.id), Math.min(Number(query.get('last')) || 30, 200)));
+route('GET', '/api/sessions/:id/transcript', ({ req, params, query }) => { // a Claude pane's chat view, read on from ?after=
+  const s = sameProject(req, params.id);
+  if (s.kind !== 'agent' || s.agent !== 'claude') throw fail(400, 'Only Claude panes have a chat view');
+  return S.chatFeed(s, query.get('sid') || null, Math.max(0, Number(query.get('after')) || 0));
+});
 route('POST', '/api/sessions/:id/clone', async ({ req, params, body }) => {
   mayStartAgents(req);
   const src = sameProject(req, params.id);

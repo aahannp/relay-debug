@@ -281,11 +281,11 @@ export function parseMarkdown(text) {
     const line = lines[i];
     let m;
     if (!line.trim()) i++;
-    else if ((m = line.match(/^\s*(```|~~~)/))) { // a fence with no end runs to the end, as on GitHub
+    else if ((m = line.match(/^\s*(```|~~~)\s*([\w+#.-]*)/))) { // a fence with no end runs to the end, as on GitHub
       const body = [];
       for (i++; i < lines.length && !lines[i].trim().startsWith(m[1]); i++) body.push(lines[i]);
       i++;
-      out.push(['pre', null, ['code', null, body.join('\n')]]);
+      out.push(['pre', m[2] ? { 'data-lang': m[2] } : null, ['code', null, body.join('\n')]]);
     } else if ((m = line.match(/^\s*(#{1,6})\s+(.*?)\s*#*\s*$/))) {
       out.push([`h${m[1].length}`, null, ...inlineMarkdown(m[2])]);
       i++;

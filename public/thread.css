@@ -1,1 +1,51 @@
 /* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE. */
+/* The thread layout: one thread at a time, full size, with T3 Code's header and empty states. */
+
+/* The selected thread fills the view: no card, no pane header (the top bar names it), no grid gap. */
+.app.layout-thread .stack.solo .grid { padding: 0; gap: 0; }
+.app.layout-thread .stack.solo .pane.max,
+.app.layout-thread .stack.solo .pane.max.focus,
+.app.layout-thread .stack.solo .pane.max.attn { border: 0; border-radius: 0; box-shadow: none; animation: none; }
+.app.layout-thread .pane-head { display: none; }
+.app.layout-thread .empty-state { display: none; }
+
+/* The header: 52px, no border, room on the right for the fixed toggles. */
+.app.layout-thread:has(#view-agents.active) .topbar { border-bottom-color: transparent; padding-right: 136px; }
+
+.thread-crumbs { min-width: 0; }
+.thread-crumbs ol { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; font-size: 14px; font-weight: 500; }
+@media (min-width: 640px) { .thread-crumbs ol { gap: 12px; } }
+.thread-crumbs li { display: flex; align-items: center; min-width: 0; }
+.thread-crumbs button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 4px; }
+.crumb-project { color: var(--dim) !important; transition: color .15s; flex-shrink: 0; }
+.crumb-project:hover { color: var(--text) !important; }
+.crumb-project-name { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.monogram { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; border-radius: 25%; background: color-mix(in srgb, currentColor 14%, transparent);
+  font: 700 9.5px/1 var(--mono); }
+.crumb-sep { color: var(--dim); flex-shrink: 0; }
+.crumb-here { flex: 1; }
+.crumb-title { margin: 0; font: inherit; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.crumb-current svg { flex: none; color: var(--dim); opacity: 0; transition: opacity .15s; }
+.crumb-current:hover svg, .crumb-current:focus-visible svg { opacity: 1; }
+.crumb-rename { min-width: 0; width: 20rem; max-width: 100%; height: 26px; padding: 0 6px; border: 0; border-radius: 4px; outline: none; background: none; color: var(--text);
+  font: inherit; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ring, var(--info)) 50%, transparent); }
+.thread-none { color: var(--dim); font-size: 14px; font-weight: 500; }
+
+/* With no thread on screen: the hero (no projects), "Pick a thread", or a new thread's draft. */
+.thread-state { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow-y: auto; container-type: inline-size; }
+.thread-state[hidden] { display: none; }
+.thread-empty { max-width: 32rem; padding: 48px 32px; text-align: center; }
+.thread-empty h1 { margin: 0; font: 600 24px/1.25 var(--display); letter-spacing: -.02em; }
+.thread-empty h2 { margin: 0; font: 600 20px/1.4 var(--display); }
+.thread-empty p { margin: 4px 0 0; color: var(--dim); font-size: 14px; line-height: 1.5; }
+.thread-empty .btn { margin-top: 24px; }
+@media (min-width: 640px) { .thread-empty h1 { font-size: 30px; } }
+
+.thread-draft { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 24px; }
+.draft-head { margin: 0; padding: 0 16px; text-align: center; font: 400 24px/1.25 var(--display); letter-spacing: -.02em; color: var(--text); }
+@media (min-width: 640px) { .draft-head { font-size: 30px; } }
+.draft-project { display: inline-flex; align-items: center; gap: 4px; padding: 0 4px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; font-weight: 500; cursor: pointer; }
+.draft-project:hover { background: var(--soft); }
+.draft-project svg { color: var(--dim); }
+.draft-project:focus-visible, .thread-crumbs button:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
+.thread-draft .chat-composer { padding-bottom: 0; }

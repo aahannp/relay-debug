@@ -135,8 +135,8 @@ const showDiff = guard(async f => {
     h('button', { class: 'btn sm', onClick: () => actions.openFile(`${selected}/${f.path}`) }, icon('pen', 13), 'Edit'));
 });
 
-// ---------- Commit, merge, discard ----------
-const commit = guard(async i => {
+// ---------- Commit, merge, discard (the diff panel's thread details use these too) ----------
+export const commit = guard(async i => {
   const message = await askText('Commit these changes', { label: 'Commit message', value: i.task?.title ?? (i.main ? '' : `Work from ${shortBranch(i.branch)}`), ok: 'Commit' });
   if (!message) return;
   const res = await api('POST', '/api/review/commit', { worktree: i.path, message });
@@ -144,7 +144,7 @@ const commit = guard(async i => {
   load();
 });
 
-const merge = guard(async i => {
+export const merge = guard(async i => {
   const ok = await confirmDialog(`Merge ${shortBranch(i.branch)} into ${i.base}?`,
     `Relay commits anything left uncommitted in the worktree, then runs git merge in your main folder (not on GitHub). If there's a conflict, nothing changes and you'll be told how to resolve it. ${i.files.length} file${i.files.length === 1 ? '' : 's'}: ${i.files.slice(0, 8).map(f => f.path).join(', ')}${i.files.length > 8 ? ', …' : ''}.`, { label: 'Merge' });
   if (!ok) return;
@@ -155,7 +155,7 @@ const merge = guard(async i => {
   load();
 });
 
-const discard = guard(async i => {
+export const discard = guard(async i => {
   const ok = await confirmDialog(`Discard ${shortBranch(i.branch)}?`,
     `This deletes the worktree folder and the branch ${i.branch}, including any work in it that wasn't merged. It can't be undone.`, { label: 'Discard', danger: true });
   if (!ok) return;

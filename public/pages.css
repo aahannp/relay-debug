@@ -1,1 +1,26 @@
 /* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE. */
+/* Settings and the workspace pages (Board, Files, Review, Artifacts, Screenshots, Graph, Spend), after T3's
+   WorkspacePageContainer and SettingsGroup: a header that is just a breadcrumb, and quiet cards
+   (rounded-xl, border/60, card/40) with rows divided by border/50. Their layouts stay as they are. */
+:root {
+  --page-line: color-mix(in srgb, var(--line) 60%, transparent);
+  --page-divide: color-mix(in srgb, var(--line) 50%, transparent);
+  --page-card: color-mix(in srgb, var(--panel) 40%, transparent);
+}
+
+/* The header: a page without its own title() shows only its name, 14px medium, like T3's breadcrumb. */
+.topbar .crumbs .view-icon, .topbar #viewHint { display: none; }
+.topbar .crumbs h1 { font: 500 14px var(--sans); letter-spacing: 0; color: var(--text); }
+/* Settings / General */
+.page-crumbs { min-width: 0; }
+.page-crumbs ol { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; font: 500 14px var(--sans); color: var(--dim); }
+.page-crumbs li { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-crumbs h1 { margin: 0; font: inherit; color: var(--text); }
+@media (min-width: 640px) { .page-crumbs ol { gap: 12px; } }
+
+/* Labels inside page cards read like T3's section titles: sentence case, 70% text, not spaced capitals. */
+.spend-card > .section-label, .spend-stat .section-label, .review .section-label, .gallery > .section-label {
+  font: 400 13px var(--sans); letter-spacing: 0; text-transform: none; color: color-mix(in srgb, var(--text) 70%, transparent); }
+.col-head h3 { font-weight: 500; }
+
+@media (min-width: 640px) { .spend { padding-inline: 24px; } }

@@ -49,18 +49,23 @@ export function mount(root) {
     h('p', {}, 'They keep running and still show in the sidebar, the Board and the Graph. Click one in the sidebar to bring it back.'),
     h('div', { class: 'row' }, h('button', { class: 'btn primary', onClick: showHidden }, icon('eye', 15), 'Show all')));
   empty = h('div', { class: 'empty-state' }, emptyCard, hiddenCard);
-  root.append(stack, empty);
+  threadState = h('div', { class: 'thread-state', hidden: true });
+  root.append(stack, empty, threadState);
+  stack.classList.toggle('solo', thread());
   dropTarget(root);
   on('sessions', sync);
   on('chats', () => { for (const p of panes.values()) if (p.kind === 'term') renderHead(p); });
   on('project', sync);
   on('settings', sync); // also picks up spaces opened or closed beside this one
   on('theme', retheme);
+  on('layout', switchLayout);
+  on('chats', refreshHeader);
   addEventListener('focus', () => panes.forEach(reclaim));
   setInterval(tick, 1000);
 }
 
 export function toolbar() {
+  if (thread()) return []; // the thread header's buttons sit top right instead (renderControls)
   const installed = state.agents.filter(a => a.installed);
   return [
     h('button', { class: 'btn', onClick: () => actions.startLead(), title: 'A lead agent plans the work and starts workers' }, icon('star', 15), 'Lead agent'),
@@ -80,6 +85,7 @@ export function toolbar() {
         { label: 'Shell', icon: 'terminal', onClick: () => newSession({ kind: 'shell' }) },
         { label: 'Browser pane', icon: 'globe', onClick: () => newBrowser() },
       ], { align: 'right' }) }, icon('chevron', 14))),
+    h('button', { class: 'icon-btn on', title: 'Back to one thread at a time', 'aria-label': 'Back to one thread at a time', 'aria-pressed': 'true', onClick: () => actions.setLayout('thread') }, icon('layoutGrid', 16)),
   ];
 }
 
@@ -337,6 +343,7 @@ function layout() {
   hiddenCard.querySelector('h2').textContent = `${off} pane${off === 1 ? '' : 's'} hidden`;
   const max = stack.querySelector('.pane.max');
   if (max && (max.classList.contains('hidden') || max.closest('.space-section').hidden)) unmaximise();
+  selectionChanged();
 }
 
 // What a session is doing right now. Output in the last 2.5s means it's working.
@@ -683,12 +690,15 @@ function toggleMaximise(id) {
   p.el.classList.toggle('max', on);
   maxKey = null;
   if (on) store(MAX, keyOf(id));
-  stack.classList.toggle('solo', on); // the maximised pane takes the whole view, other spaces too
+  if (on) draft = null;
+  stack.classList.toggle('solo', on || thread()); // the maximised pane takes the whole view, other spaces too
+  selectionChanged();
 }
 const unmaximise = () => {
   stack.querySelectorAll('.pane.max').forEach(x => x.classList.remove('max'));
-  stack.classList.remove('solo');
+  stack.classList.toggle('solo', thread()); // in the thread layout nothing selected shows "Pick a thread"
   store(MAX, null);
+  selectionChanged();
 };
 
 const closePane = guard(async id => {
@@ -918,4 +928,177 @@ function browserPane(b, project) {
 
 function removeBrowser(p) {
   saveBrowsers(p.project, browserList(p.project).filter(b => b.id !== p.id));
+}
+
+// ---------- Thread layout ----------
+// Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
+// One thread at a time: the selected pane is the maximised one, shown full size without its card or header, and the
+// top bar names it. The grid layout is the same panes, unmaximised. Switching threads never remakes a terminal.
+const thread = () => state.layout !== 'grid';
+let threadState; // what fills the view with no thread on screen: the hero, "Pick a thread" or a new thread's draft
+let draft = null; // { project, model, el } while a new thread is being written
+let renaming = false;
+let headerFor = null; // what the header last named, so it's redrawn only when that changes
+const shown = () => actions.currentView?.() === 'agents';
+const selected = () => panes.get(stack?.querySelector('.pane.max')?.dataset.id);
+const projectName = path => state.projects.find(p => p.path === path)?.name ?? baseName(path);
+const paneTitle = p => (p.kind === 'term' ? chatTitle(p.session) : 'Browser');
+
+const hero = h('div', { class: 'thread-empty' },
+  h('h1', {}, 'What should we work on?'),
+  h('p', {}, 'Add a project to start your first thread.'),
+  h('button', { class: 'btn sm primary', onClick: () => actions.addProject() }, icon('plus', 14), 'Add project'));
+const pick = h('div', { class: 'thread-empty' },
+  h('h2', {}, 'Pick a thread to continue'),
+  h('p', {}, 'Select an existing thread or create a new one to get started.'));
+
+// Called by layout() and whenever the selection changes, so a thread closing or hiding also updates the header.
+function selectionChanged() {
+  if (!threadState) return;
+  const p = selected();
+  const want = !thread() ? null : !state.projects.length ? hero : draft ? draft.el : p ? null : pick;
+  threadState.hidden = !want;
+  if (want && threadState.firstChild !== want) threadState.replaceChildren(want);
+  const now = draft ?? p ?? state.projects.length;
+  if (now !== headerFor) {
+    headerFor = now;
+    refreshHeader();
+  }
+}
+
+function refreshHeader() {
+  if (shown() && !renaming) actions.renderToolbar?.();
+}
+
+function switchLayout() {
+  if (!thread()) {
+    draft = null;
+    unmaximise();
+  } else if (!selected() && panes.get(focusedId) && !panes.get(focusedId).el.classList.contains('hidden')) toggleMaximise(focusedId);
+  else stack.classList.add('solo');
+  layout();
+  refreshHeader();
+  renderControls();
+  requestAnimationFrame(() => panes.forEach(p => p.fit?.()));
+}
+
+// The header's left side: "project / thread ⌄". The project starts a new thread there; the thread opens its menu,
+// and a double-click renames it in place.
+export function title() {
+  if (!thread()) return null;
+  const p = selected();
+  const project = draft?.project ?? (p ? projectOf(p) : null);
+  if (!project) return h('span', { class: 'thread-none' }, state.projects.length ? 'No active thread' : '');
+  const name = projectName(project);
+  let current;
+  if (!p) current = h('h2', { class: 'crumb-title' }, 'New thread');
+  else {
+    const label = h('h2', { class: 'crumb-title' }, paneTitle(p));
+    current = h('button', { class: 'crumb-current', 'aria-haspopup': 'menu', title: p.session?.chatId ? 'Double-click to rename' : '',
+      onClick: e => threadMenu(e.currentTarget, p),
+      onDblclick: () => p.session?.chatId && renameInline(current, p.session) }, label, icon('chevronDown', 14));
+  }
+  return h('nav', { class: 'thread-crumbs', 'aria-label': 'Thread breadcrumb' }, h('ol', {},
+    h('li', {}, h('button', { class: 'crumb-project', title: project, 'aria-label': `New thread in ${name}`, onClick: () => actions.newChat(project) },
+      h('span', { class: 'monogram', 'aria-hidden': 'true' }, name[0]?.toUpperCase()), h('span', { class: 'crumb-project-name' }, name))),
+    h('li', { class: 'crumb-sep', 'aria-hidden': 'true' }, '/'),
+    h('li', { class: 'crumb-here' }, current)));
+}
+
+function threadMenu(anchor, p) {
+  const chat = p.el.classList.contains('chat-mode');
+  menu(anchor, [
+    p.session?.chatId && { label: 'Rename', icon: 'pen', onClick: () => renameInline(anchor, p.session) },
+    p.showChat && { label: chat ? 'Show terminal' : 'Show chat', icon: chat ? 'terminal' : 'message', onClick: () => p.showChat(!chat) },
+    { label: 'Show all threads in a grid', icon: 'layoutGrid', onClick: () => actions.setLayout('grid') },
+    { label: 'Hide', icon: 'eyeOff', onClick: () => hidePane(p.id) },
+    'sep',
+    { label: p.kind === 'term' ? 'Stop and close' : 'Close', icon: 'x', onClick: () => closePane(p.id) },
+  ].filter(Boolean));
+}
+
+function renameInline(el, s) {
+  document.querySelector('.menu')?.remove();
+  renaming = true;
+  const before = chatTitle(s);
+  const input = h('input', { class: 'crumb-rename', value: before, 'aria-label': 'Thread title', spellcheck: false });
+  const done = async save => {
+    if (!renaming) return;
+    renaming = false;
+    const title = input.value.trim();
+    if (save && title && title !== before) await api('PATCH', `/api/chats/${encodeURIComponent(s.chatId)}`, { title }).catch(e => toast(e.message, 'error'));
+    refreshHeader();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); done(true); }
+    if (e.key === 'Escape') { e.preventDefault(); done(false); }
+  });
+  input.addEventListener('blur', () => done(true));
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+// The top-right toggles, while the Agents view shows one thread.
+const controls = () => [
+  ['squareMenu', 'Toggle thread details', e => actions.threadDetails?.(e.currentTarget)],
+  ['panelBottom', 'Toggle terminal drawer', () => actions.toggleDrawer?.()],
+  ['panelRight', 'Toggle right panel', () => actions.toggleDiff?.()],
+  ['layoutGrid', 'Show all threads in a grid', () => actions.setLayout('grid')],
+].map(([name, label, onClick]) => h('button', { class: 'icon-btn', title: label, 'aria-label': label, onClick }, icon(name, 16)));
+
+function renderControls() {
+  const el = document.getElementById('titleControls');
+  if (el) el.replaceChildren(...(thread() && shown() ? controls() : []));
+}
+export const show = renderControls;
+export const hide = () => document.getElementById('titleControls')?.replaceChildren();
+
+// New thread: in the thread layout, a draft with a headline and a composer; the thread starts when you send.
+actions.newChat = project => (thread() ? openDraft(project) : newSession(project ? { project } : {}));
+command('New thread', () => actions.newChat(), { icon: 'squarePen' });
+
+function openDraft(project = state.project) {
+  if (!project) return actions.addProject(path => openDraft(path));
+  unmaximise();
+  const d = { project, model: '' };
+  const name = h('span', {}, projectName(project));
+  const pickProject = path => { d.project = path; name.textContent = projectName(path); refreshHeader(); };
+  const projectBtn = h('button', { class: 'draft-project', 'aria-haspopup': 'menu', title: 'Choose the project', onClick: e => menu(e.currentTarget, [
+    ...state.projects.map(x => ({ label: x.name, sub: x.path.replace(state.info.home, '~'), icon: 'folder', onClick: () => pickProject(x.path) })),
+    'sep',
+    { label: 'Add project', icon: 'plus', onClick: () => actions.addProject(pickProject) },
+  ]) }, name, icon('chevronDown', 16));
+  const modelLabel = h('span', {}, 'Default model');
+  const modelBtn = h('button', { class: 'btn ghost xs', 'aria-haspopup': 'menu', title: 'Model', onClick: e => menu(e.currentTarget, MODELS.map(([id, label]) => ({
+    label: id ? label.split(':')[0] : 'Default model', sub: id ? label.split(': ')[1] : 'the usual one', icon: d.model === id ? 'check' : undefined,
+    onClick: () => { d.model = id; modelLabel.textContent = id ? label.split(':')[0] : 'Default model'; },
+  }))) }, modelLabel, icon('chevronDown', 12));
+  const go = h('button', { class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send', disabled: true, onClick: () => send() }, icon('arrowUp', 16));
+  const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'First message', placeholder: 'Ask anything, @ to mention files',
+    onInput: () => { go.disabled = !input.value.trim(); },
+    onKeydown: e => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeDraft(); }
+    } });
+  const send = async () => {
+    const prompt = input.value.trim();
+    if (!prompt || go.disabled) return;
+    go.disabled = true;
+    if (!(await newSession({ project: d.project, prompt, model: d.model }))) go.disabled = false; // selecting it closes the draft
+  };
+  d.el = h('div', { class: 'thread-draft' },
+    h('h1', { class: 'draft-head' }, 'What should we build in ', projectBtn, '?'),
+    h('div', { class: 'chat-composer' }, h('div', { class: 'chat-card' }, input,
+      h('div', { class: 'chat-controls' }, modelBtn, h('span', { class: 'grow' }), go))));
+  draft = d;
+  actions.showView('agents');
+  selectionChanged();
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeDraft() {
+  draft = null;
+  selectionChanged();
 }

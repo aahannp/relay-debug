@@ -1,7 +1,7 @@
 {
   "name": "agent-desk",
   "productName": "Relay",
-  "version": "1.11.2",
+  "version": "1.11.3",
   "description": "Run many Claude Code agents side by side",
   "private": true,
   "type": "module",

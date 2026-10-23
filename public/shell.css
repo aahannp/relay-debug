@@ -1,8 +1,16 @@
 :root { --side-w: 256px; --bar-h: 52px; --row-r: 8px; } /* T3's 16rem */
 .app { grid-template-columns: var(--side-w) 1fr; }
 .app.no-side { grid-template-columns: 1fr; }
-.side :focus-visible, .topbar :focus-visible { outline: 2px solid var(--ring, var(--hair-strong)); outline-offset: -2px; }
-.side-toggle { -webkit-app-region: no-drag; margin-right: -4px; }
+.side :focus-visible, .topbar :focus-visible, .side-toggle-wrap :focus-visible { outline: 2px solid var(--ring, var(--hair-strong)); outline-offset: -2px; }
+/* The sidebar toggle and the title controls sit fixed over the top bar (T3's layout). For now the toggle stays exactly
+   where it was inside the bar: the bar keeps room for it (16px + 28px button + 8px). */
+.side-toggle { -webkit-app-region: no-drag; }
+.side-toggle-wrap, .title-controls { position: fixed; top: 0; z-index: 5; height: calc(var(--bar-h) - 1px); display: flex; align-items: center; }
+.side-toggle-wrap { left: calc(var(--side-w) + 16px); }
+.app.no-side .side-toggle-wrap { left: 16px; }
+.is-app .app.no-side .side-toggle-wrap { left: 84px; }
+.title-controls { right: 12px; gap: 4px; }
+.title-controls:empty { display: none; }
 .side { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 0 8px 8px; background: var(--side); border-right: 1px solid var(--hair); }
 .side > * { flex-shrink: 0; } /* only the spaces and chats lists give way */
 .side-top { height: var(--bar-h); margin: 0 -8px 8px; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid var(--hair); -webkit-app-region: drag; }
@@ -65,8 +73,9 @@
 @keyframes breathe { 50% { background: var(--softer); } }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.topbar { height: var(--bar-h); display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; -webkit-app-region: drag; flex-shrink: 0; border-bottom: 1px solid var(--hair); background: var(--bg); }
+.topbar { height: var(--bar-h); display: flex; align-items: center; gap: 12px; padding: 0 12px 0 52px; -webkit-app-region: drag; flex-shrink: 0; border-bottom: 1px solid var(--hair); background: var(--bg); }
 .topbar button, .topbar input, .topbar select { -webkit-app-region: no-drag; }
+.is-app .app.no-side .topbar { padding-left: 120px; } /* the traffic lights, then the toggle */
 .crumbs { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .view-icon { width: 28px; height: 28px; border-radius: var(--row-r); display: grid; place-items: center; flex-shrink: 0; color: var(--dim); background: var(--soft); }
 .crumbs .titles { display: flex; align-items: baseline; gap: 10px; line-height: 1.2; min-width: 0; }

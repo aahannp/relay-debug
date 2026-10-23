@@ -206,7 +206,8 @@ flowchart LR
   the release page, which isn't limited (since 1.9.10). If 1.9.9 or older shows a rate-limit error, download the latest by hand once.
 - **Automatic updates** (since 1.10.0): with Settings › Update automatically on (the default), the Mac app downloads a new
   version in the background, checks its SHA-256 against the release, and installs it when you quit Relay. Or
-  click **Restart to update**: agents stop and resume after the restart. Relay never restarts on its own. If
+  click **Restart to update**: agents stop and resume after the restart. Relay never restarts on its own. It
+  replaces what's inside Relay.app rather than the app itself, so it works on Mac accounts that aren't admins. If
   macOS blocks the install, Relay says so on the next launch and goes back to the manual download: allow Relay
   in System Settings › Privacy & Security › App Management, then turn the setting back on.
 - **MCP for your own Claude Code**: Settings shows a one-line `claude mcp add` that gives the same 21 board

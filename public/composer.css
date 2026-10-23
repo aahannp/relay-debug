@@ -1,33 +1,54 @@
-/* The chat view's composer (composer.js): a card with the message box and a controls row, and the panel docked above it
-   while Claude asks something. Monochrome plus --warn, and Stop stays neutral.
-   Sizes and shadows adapted from T3 Code (https://github.com/pingdotgg/t3code, MIT): ComposerSurface, ComposerBanner,
-   ComposerPendingUserInputPanel, ComposerPrimaryActions and ContextWindowMeter. */
-:root { --shadow-composer: 0 14px 32px -18px rgb(0 0 0 / .75); } /* T3's --shadow-composer-dark */
-[data-mode="light"] { --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / .4); }
-.chat-composer { flex: none; width: 100%; max-width: calc(46rem + 24px); margin-inline: auto; padding: 0 12px 12px; box-sizing: border-box; }
-@container (min-width: 640px) { .chat-composer { padding-inline: 48px; max-width: calc(46rem + 96px); } } /* lines up with chat.css's lane */
+/* The chat view's composer (composer.js): T3's glass card floating over the message list, 16px above the foot,
+   with the approval or question banner attached to its top. Monochrome plus --info (Send), --bad (Stop) and --warn.
+   Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
+   From ComposerSurface, ChatComposer, ComposerControl, ComposerBanner, ComposerPendingApprovalPanel,
+   ComposerPrimaryActions, ContextWindowMeter and index.css (--glass-*, --shadow-composer). */
+:root { --glass-blur: 16px; --glass-saturation: 1.08; --composer-glass: var(--panel2); --composer-outline: rgb(255 255 255 / 5%); --shadow-composer: none; }
+[data-mode="light"] { --glass-blur: 12px; --glass-saturation: 1.14; --composer-glass: var(--panel); --composer-outline: rgb(0 0 0 / 8%);
+  --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%); }
 
-.chat-card { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: calc(var(--radius, 10px) + 8px); background: var(--panel);
-  box-shadow: var(--shadow-composer); transition: border-color .2s; }
-.chat-card:focus-within { border-color: var(--ring, var(--info)); }
+/* Floats over the list, in the same 46rem lane; chat.js pads the list by its height so the last message clears it. */
+.chat-composer { position: absolute; inset: auto 0 0; z-index: 20; padding: 0 12px 16px; pointer-events: none; }
+@container (min-width: 640px) { .chat-composer { padding-inline: 48px; } } /* lines up with chat.css's lane */
+.chat-composer-lane { max-width: 46rem; margin-inline: auto; pointer-events: auto; }
+
+.chat-card { position: relative; isolation: isolate; display: flex; flex-direction: column; border-radius: 24px;
+  background: color-mix(in srgb, var(--composer-glass) 80%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  box-shadow: var(--shadow-composer), inset 0 0 0 1px var(--composer-outline); }
+[data-mode="dark"] .chat-card { box-shadow: inset 0 0 0 1px var(--composer-outline), inset 0 1px 0 rgb(255 255 255 / 3%); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .chat-card { background: var(--composer-glass); } }
 .chat-input { display: block; width: 100%; box-sizing: border-box; border: 0; outline: none; background: none; resize: none; color: var(--text);
-  padding: 12px 16px 2px; font: inherit; line-height: 1.5; field-sizing: content; min-height: calc(2lh + 14px); max-height: 13rem; overflow-y: auto; scrollbar-width: thin; }
-.chat-input::placeholder { color: var(--dim); }
-.chat-input:disabled { color: var(--dim); cursor: not-allowed; }
-.chat-controls { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px 12px; min-width: 0; }
-.chat-key-hint { color: var(--dim); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  padding: 14px 12px 0; font: inherit; font-size: 14px; line-height: 1.625; field-sizing: content; min-height: 78px; max-height: 208px;
+  overflow-y: auto; scrollbar-width: thin; }
+@container (min-width: 640px) { .chat-input { padding: 16px 16px 0; } }
+.chat-input::placeholder { color: color-mix(in srgb, var(--dim) 75%, transparent); }
+.chat-input:disabled { cursor: not-allowed; }
+.chat-controls { display: flex; align-items: center; gap: 8px; padding: 0 12px 12px; min-width: 0; }
+@container (min-width: 640px) { .chat-controls { padding: 0 16px 16px; } }
 
-/* One round button: Send (an up arrow) or, while Claude works and the box is empty, Stop (a square). */
-.chat-go { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--text); color: var(--bg);
-  cursor: pointer; transition: opacity .15s, transform .15s; }
+/* A footer control (T3's ComposerControl): 28px tall, 500, the secondary label colour, the hover fill. */
+.chat-control { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; margin-left: -6px; border: 0; border-radius: var(--control-radius, 8px);
+  background: none; color: color-mix(in srgb, var(--text) 72%, var(--dim)); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.chat-control:hover:not(:disabled) { background: var(--soft); color: var(--text); }
+.chat-control:active:not(:disabled) { scale: .97; }
+.chat-control:disabled { opacity: .64; cursor: default; }
+.chat-control .icon { color: var(--dim); margin-right: -4px; }
+
+/* Send: a 32px round button in T3's primary blue. Stop, while Claude works and the box is empty: the same in red. */
+.chat-go { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--info); color: var(--ring-ink, #fff); box-shadow: inset 0 1px rgb(255 255 255 / 16%), 0 1px 2px rgb(0 0 0 / 8%);
+  cursor: pointer; transition: background .15s, transform .15s; }
 .chat-go:hover:not(:disabled) { transform: scale(1.05); }
-.chat-go:disabled { opacity: .64; cursor: default; }
+.chat-go:disabled { opacity: .64; cursor: default; box-shadow: none; }
+.chat-go.stop { background: color-mix(in srgb, var(--bad) 90%, transparent); color: #fff; }
+.chat-go.stop:hover { background: var(--bad); transform: none; }
 .chat-go[hidden] { display: none; }
-.chat-go:focus-visible, .chat-option:focus-visible, .chat-ring:focus-visible, .chat-dock-body:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
-.chat-go-stop { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
+.chat-go:focus-visible, .chat-control:focus-visible, .chat-option:focus-visible, .chat-ring:focus-visible, .chat-dock-body:focus-visible {
+  outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
 
-/* The context ring: the meter in the pane header, round. Dim, amber over 70%, full text colour over 90%. */
-.chat-ring { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; cursor: default; }
+/* The context ring: a 28px spot with a 20px ring. Dim, amber over 70%, full text colour over 90%. */
+.chat-ring { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; cursor: default; }
 .chat-ring[hidden] { display: none; }
 .chat-ring svg { width: 20px; height: 20px; transform: rotate(-90deg); }
 .chat-ring circle { fill: none; stroke-width: 3; }
@@ -35,24 +56,42 @@
 .chat-ring-arc { stroke: var(--dim); stroke-linecap: round; transition: stroke-dashoffset .5s ease-out, stroke .5s; }
 .chat-ring.warn .chat-ring-arc { stroke: var(--warn); }
 .chat-ring.bad .chat-ring-arc { stroke: var(--text); }
-@media (prefers-reduced-motion: reduce) { .chat-ring-arc { transition: none; } }
 
-/* The docked panel: an amber-tinted tab joined to the top of the card. */
-.chat-dock { display: flex; flex-direction: column; gap: 8px; margin: 0 10px; padding: 10px 12px 12px; border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
-  border-bottom: 0; border-radius: 14px 14px 0 0; background: color-mix(in srgb, var(--warn) 8%, var(--panel)); font-size: 12.5px; }
+/* The banner attached on top of the card, inset 22px each side: the glass tinted 8% warning, outlined at 28%. */
+.chat-dock { display: flex; flex-direction: column; gap: 8px; margin: 0 22px; padding: 8px 8px 10px; border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+  border-bottom: 0; border-radius: 16px 16px 0 0; font-size: 12px; line-height: 16px;
+  background: linear-gradient(color-mix(in srgb, var(--warn) 8%, transparent), color-mix(in srgb, var(--warn) 8%, transparent)), color-mix(in srgb, var(--composer-glass) 80%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); }
+.chat-dock[data-kind="question"] { border-color: color-mix(in srgb, var(--info) 28%, transparent);
+  background: linear-gradient(color-mix(in srgb, var(--info) 8%, transparent), color-mix(in srgb, var(--info) 8%, transparent)), color-mix(in srgb, var(--composer-glass) 80%, transparent); }
 .chat-dock[hidden] { display: none; }
-.chat-dock.busy .chat-dock-options { opacity: .5; pointer-events: none; }
-.chat-dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
-.chat-dock-title { font-weight: 600; font-size: 12px; color: color-mix(in srgb, var(--warn) 55%, var(--text)); }
-.chat-dock-step { color: var(--dim); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.chat-dock-body { margin: 0; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; }
-pre.chat-dock-body { font: 11.5px/1.5 var(--mono); padding: 6px 8px; border-radius: 8px; background: var(--softer); }
+.chat-dock.busy :is(.chat-dock-options, .chat-dock-actions) { opacity: .5; pointer-events: none; }
+.chat-dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--dim); font-size: 11px; }
+.chat-dock-head > .icon { flex: none; }
+.chat-dock[data-kind="question"] .chat-dock-head > .icon { color: var(--info); }
+.chat-dock-title { flex: none; font-weight: 500; color: var(--warn); }
+.chat-dock[data-kind="question"] .chat-dock-title { color: var(--text); }
+.chat-dock-step { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chat-dock-body { display: block; margin: 0; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; color: var(--text); }
+.chat-dock:not([data-kind="approval"]) > .chat-dock-body { padding-inline: 4px; font-size: 13px; line-height: 1.5; }
+
+/* An approval: Shield | what it asks and the command | Decline, Approve, "…". Narrow, the buttons drop below. */
+.chat-dock-row { container-type: inline-size; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: start; gap: 12px 8px; }
+.chat-dock-icon { display: flex; justify-content: center; padding-top: 2px; color: var(--warn); }
+.chat-dock-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.chat-dock-main code.chat-dock-body { padding: 0; background: none; border-radius: 0; font: 12px/16px var(--mono); }
+.chat-dock-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; align-self: center; }
+.chat-dock-actions .btn.primary { background: var(--info); border-color: var(--info); }
+@container (max-width: 560px) { .chat-dock-actions { grid-column: 2 / 4; justify-content: flex-start; } }
+
+/* A question or menu: T3's option rows, the label at 500 and a small description; the number key on the right. */
 .chat-dock-options { display: flex; flex-direction: column; gap: 2px; }
-.chat-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 8px; background: none; color: var(--text);
-  text-align: left; font: inherit; cursor: pointer; transition: background .15s; }
+.chat-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: none; color: var(--text);
+  text-align: left; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; }
 .chat-option:hover { background: var(--soft); }
 .chat-option-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
-.chat-option-desc { color: var(--dim); font-size: 11.5px; }
+.chat-option-desc { color: var(--dim); font-size: 11px; font-weight: 400; }
 .chat-option kbd { flex: none; }
 .chat-dock-error { color: var(--text); font-size: 11.5px; font-weight: 600; }
 .chat-dock-error:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .chat-ring-arc, .chat-go, .chat-option { transition: none; } }

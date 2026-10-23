@@ -1,9 +1,10 @@
-// The composer of a chat view (chat.js): the message card with its context ring and Send/Stop button, and the
-// panel docked above it while Claude asks something, whose options you can pick from here.
+// The composer of a chat view (chat.js): T3's floating glass card with the model chip, context ring and Send/Stop,
+// and the banner attached on top of it while Claude asks something, whose options you can pick from here.
 // The page above hears 'sent' on `el` after a message goes out, so it can scroll to the end.
-// Adapted from T3 Code (https://github.com/pingdotgg/t3code, MIT): ComposerPendingApprovalPanel,
+// Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
+// From ChatComposer, ComposerControl, ComposerPendingApprovalPanel, ComposerPendingApprovalActions,
 // ComposerPendingUserInputPanel, ComposerPrimaryActions and ContextWindowMeter.
-import { api, h, icon, meterView } from './ui.js';
+import { api, h, icon, menu, meterView } from './ui.js';
 
 // Control characters out (newlines and tabs stay), so a paste can't end the paste brackets early (as lib/sessions.mjs does).
 const CONTROL = /\x1b|[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
@@ -46,12 +47,16 @@ const svg = (tag, attrs) => {
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   return el;
 };
+// The model chip's menu: what `/model <id>` switches the running Claude to.
+const MODELS = [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
+const modelName = id => MODELS.find(([m]) => m === id)?.[1] ?? 'Default model';
 
 export function composer(p) {
   let panel = null; // what the docked panel shows, or null
   let shown = ''; // the menu it was built from, so a feed read with the same menu leaves it alone
   let choosing = false;
   let working = false;
+  let model = p.session.model; // picked here, it's ours: the session keeps the model it started with
 
   const dock = h('div', { class: 'chat-dock', hidden: true });
   const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'Message Claude', onInput: () => buttons(), onKeydown: e => {
@@ -63,25 +68,28 @@ export function composer(p) {
   const rings = svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
   rings.append(svg('circle', { cx: 12, cy: 12, r: R, class: 'chat-ring-track' }), arc);
   const ring = h('span', { class: 'chat-ring', role: 'img', tabindex: 0, hidden: true }, rings);
-  const hint = h('span', { class: 'chat-key-hint', hidden: true }, 'Esc to stop');
-  const stop = h('button', { class: 'chat-go', title: 'Stop Claude (Esc)', 'aria-label': 'Stop Claude', hidden: true, onClick: () => p.send('\x1b') },
-    h('span', { class: 'chat-go-stop' }));
-  const send = h('button', { class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send', disabled: true, onClick: () => submit(),
-    innerHTML: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>' });
+  const modelLabel = h('span', {}, modelName(model));
+  const chip = h('button', { type: 'button', class: 'chat-control', 'aria-haspopup': 'menu', title: 'Model', onClick: () => pickModel() },
+    modelLabel, icon('chevronDown', 14));
+  const stop = h('button', { type: 'button', class: 'chat-go stop', title: 'Interrupt (Esc)', 'aria-label': 'Stop generation', hidden: true, onClick: () => p.send('\x1b'),
+    innerHTML: '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>' });
+  const send = h('button', { type: 'button', class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send message', disabled: true, onClick: () => submit(),
+    innerHTML: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' });
   const card = h('div', { class: 'chat-card' }, input,
-    h('div', { class: 'chat-controls' }, ring, hint, h('span', { class: 'grow' }), stop, send));
-  const el = h('div', { class: 'chat-composer' }, dock, card);
+    h('div', { class: 'chat-controls' }, chip, h('span', { class: 'grow' }), ring, stop, send));
+  const el = h('div', { class: 'chat-composer' }, h('div', { class: 'chat-composer-lane' }, dock, card));
 
-  // Keys 1–9 pick an option while focus is anywhere in this chat view but a text field. They go through /choose,
-  // never into the terminal: the server checks the option is still on screen and moves Claude's cursor to it.
-  document.addEventListener('keydown', e => {
+  // Keys 1–9 pick an option while focus is anywhere in this chat view but a text field (chat.js listens on the view,
+  // so a closed pane takes its listener with it). They go through /choose, never into the terminal: the server
+  // checks the option is still on screen and moves Claude's cursor to it.
+  function keys(e) {
     if (!panel?.options.length || e.metaKey || e.ctrlKey || e.altKey || e.isComposing || !/^[1-9]$/.test(e.key)) return;
-    if (!(el.parentElement ?? el).contains(e.target) || e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
     const o = panel.options.find(x => x.n === Number(e.key));
     if (!o) return;
     e.preventDefault();
     choose(o);
-  });
+  }
 
   async function choose(o) {
     if (choosing) return;
@@ -103,6 +111,42 @@ export function composer(p) {
     stop.hidden = !(working && empty);
     send.hidden = !stop.hidden;
     send.disabled = empty || input.disabled;
+    chip.disabled = input.disabled;
+  }
+
+  // The menu opens above the chip, as the composer sits at the foot of the window.
+  function pickModel() {
+    menu(chip, MODELS.map(([id, name]) => ({ label: name, icon: id === model ? 'check' : null, onClick: () => {
+      if (id === model || !type(`/model ${id}`)) return;
+      model = id;
+      modelLabel.textContent = name;
+    } })));
+    const m = document.querySelector('.menu');
+    if (m) m.style.top = `${Math.max(8, chip.getBoundingClientRect().top - m.offsetHeight - 6)}px`;
+  }
+
+  const terminalButton = () => h('button', { type: 'button', class: 'btn xs ghost', onClick: () => p.showChat(false) }, icon('terminal', 12), 'Open terminal');
+  const optionRow = o => h('button', { type: 'button', class: 'chat-option', onClick: () => choose(o) },
+    h('span', { class: 'chat-option-text' }, h('span', {}, o.label), o.description && h('span', { class: 'chat-option-desc' }, o.description)),
+    o.n <= 9 && h('kbd', {}, String(o.n)));
+
+  // An approval is T3's banner: Shield, "Command approval", the command, then Decline and Approve, the rest under "…".
+  // Claude Code's first "Yes" approves and its "No" declines; every option keeps its number key.
+  function approval() {
+    const yes = panel.options.find(o => /^Yes\b/.test(o.label));
+    const no = panel.options.find(o => /^No\b/.test(o.label));
+    const rest = panel.options.filter(o => o !== yes && o !== no);
+    const more = h('button', { type: 'button', class: 'btn xs', 'aria-label': 'More approval options', 'aria-haspopup': 'menu', onClick: () => {
+      menu(more, [...rest.map(o => ({ label: o.label, sub: o.n <= 9 ? String(o.n) : '', onClick: () => choose(o) })),
+        ...(rest.length ? ['sep'] : []), { label: 'Open terminal', icon: 'terminal', onClick: () => p.showChat(false) }], { align: 'right' });
+    } }, icon('dots', 14));
+    const answer = (o, text, kind) => o && h('button', { type: 'button', class: `btn xs ${kind}`.trim(), title: o.n <= 9 ? `${o.label} (${o.n})` : o.label, onClick: () => choose(o) }, text);
+    return h('div', { class: 'chat-dock-row' },
+      h('span', { class: 'chat-dock-icon', 'aria-hidden': 'true' }, icon('shield', 16)),
+      h('span', { class: 'chat-dock-main' },
+        h('span', { class: 'chat-dock-head' }, h('span', { class: 'chat-dock-title' }, panel.title), panel.step && h('span', { class: 'chat-dock-step' }, panel.step)),
+        h('code', { class: 'chat-dock-body', tabindex: 0, 'aria-label': panel.title === 'Command approval' ? 'Command' : 'Request' }, panel.body)),
+      h('span', { class: 'chat-dock-actions' }, answer(no, 'Decline', ''), answer(yes, 'Approve', 'primary'), more));
   }
 
   function render(next) {
@@ -112,33 +156,32 @@ export function composer(p) {
     dock.hidden = !panel;
     if (!panel) return dock.replaceChildren();
     dock.dataset.kind = panel.kind;
-    dock.replaceChildren(h('div', { class: 'chat-dock-head' },
-      h('span', { class: 'chat-dock-title' }, panel.title), panel.step && h('span', { class: 'chat-dock-step' }, panel.step),
-      h('span', { class: 'grow' }),
-      h('button', { class: 'btn xs', onClick: () => p.showChat(false) }, icon('terminal', 12), 'Open Terminal')),
-    panel.body && h(panel.kind === 'approval' ? 'pre' : 'div', { class: 'chat-dock-body', tabindex: 0 }, panel.body),
-    panel.options.length > 0 && h('div', { class: 'chat-dock-options' }, panel.options.map(o =>
-      h('button', { class: 'chat-option', onClick: () => choose(o) },
-        h('span', { class: 'chat-option-text' }, h('span', {}, o.label), o.description && h('span', { class: 'chat-option-desc' }, o.description)),
-        o.n <= 9 && h('kbd', {}, String(o.n))))),
-    h('div', { class: 'chat-dock-error', role: 'alert' }));
+    dock.setAttribute('role', 'group');
     dock.setAttribute('aria-label', panel.title);
+    if (panel.kind === 'approval') return dock.replaceChildren(approval(), h('div', { class: 'chat-dock-error', role: 'alert' }));
+    dock.replaceChildren(
+      h('div', { class: 'chat-dock-head' }, icon(panel.kind === 'question' ? 'message' : 'info', 14),
+        h('span', { class: 'chat-dock-title' }, panel.title), panel.step && h('span', { class: 'chat-dock-step' }, panel.step),
+        h('span', { class: 'grow' }), terminalButton()),
+      panel.body && h('div', { class: 'chat-dock-body', tabindex: 0 }, panel.body),
+      panel.options.length > 0 && h('div', { class: 'chat-dock-options' }, panel.options.map(optionRow)),
+      h('div', { class: 'chat-dock-error', role: 'alert' }));
   }
 
-  // While a panel is up the input is off, so focus goes to the panel's first option, where 1–9 work.
-  const focus = () => (input.disabled ? dock.querySelector('.chat-option') ?? dock.querySelector('button') : input)?.focus();
+  // While a panel is up the input is off, so focus goes to the panel's first choice, where 1–9 work.
+  const focus = () => (input.disabled ? dock.querySelector('.chat-option, .btn.primary') ?? dock.querySelector('button') : input)?.focus();
 
   return {
     el,
     focus,
+    keys,
     // `pending` is the tool still waiting for its result (or null); `menu` is the menu on Claude's screen (or null).
     update({ status, exited, prompting, menu, pending }) {
       const had = el.contains(document.activeElement);
       const up = prompting && !exited;
       input.disabled = exited || prompting;
-      input.placeholder = exited ? 'This agent has exited' : prompting ? 'Choose an option above' : 'Message Claude';
+      input.placeholder = exited ? 'This agent has exited' : prompting ? 'Choose an option above' : 'Ask anything, @tag files/folders, or / for commands';
       working = status === 'working' && !exited;
-      hint.hidden = !working;
       buttons();
       const key = up ? JSON.stringify([menu, pending?.id]) : '';
       if (key === shown) return;
@@ -159,12 +202,17 @@ export function composer(p) {
   };
 
   // Typed into the terminal as a paste, then Enter on its own: Claude Code treats one big chunk as a paste.
+  function type(text) {
+    if (!text || input.disabled || p.ws?.readyState !== WebSocket.OPEN) return false;
+    p.send(p.term.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text.replace(/\s*\n\s*/g, ' '));
+    setTimeout(() => p.send('\r'), 150);
+    return true;
+  }
+
   // A slash command other than /compact or /clear draws its own screen, which only the terminal shows.
   function submit() {
     const text = input.value.replace(CONTROL, '').trim();
-    if (!text || input.disabled || p.ws?.readyState !== WebSocket.OPEN) return;
-    p.send(p.term.modes.bracketedPasteMode ? `\x1b[200~${text}\x1b[201~` : text.replace(/\s*\n\s*/g, ' '));
-    setTimeout(() => p.send('\r'), 150);
+    if (!type(text)) return;
     input.value = '';
     buttons();
     el.dispatchEvent(new Event('sent'));

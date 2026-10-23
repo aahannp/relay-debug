@@ -39,7 +39,7 @@
 .chat-group-head > .icon { flex: none; transform: rotate(-90deg); transition: transform .15s; }
 .chat-group-head[aria-expanded="true"] > .icon { transform: none; }
 .chat-group-head .chat-label { color: inherit; }
-.chat-group-head:focus-visible, .chat-fold > summary:focus-visible { outline: 2px solid var(--hair-strong); outline-offset: -2px; }
+.chat-group-head:focus-visible, .chat-fold > summary:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: -2px; }
 .chat-group-body { display: flex; flex-direction: column; }
 .chat-group.many .chat-group-body { margin: 2px 0 2px 10px; padding-left: 8px; border-left: 1px solid var(--hair); max-height: min(18rem, 50dvh); overflow-y: auto; }
 .chat-group.many .chat-group-body:has(> details[open]) { max-height: none; }
@@ -60,7 +60,7 @@
 .chat-tool-body pre.bad { border-color: var(--hair-strong); border-left-width: 3px; }
 
 /* A question Claude asks: a card, answered in the terminal or the docked panel. */
-.chat-ask { border: 1px solid var(--hair-strong); border-radius: 12px; background: var(--softer); padding: 8px 0 0; }
+.chat-ask { border: 1px solid var(--line); border-radius: 12px; background: var(--softer); padding: 8px 0 0; }
 .chat-ask-title { padding: 0 12px 6px; color: var(--dim); font-size: 12px; }
 .chat-ask > .chat-tool-body { padding: 0 12px 10px; }
 .chat-ask-q { display: flex; flex-direction: column; gap: 6px; }
@@ -102,7 +102,7 @@
 /* "Scroll to end": a strip of no height stuck to the scroller's foot, with the pill just above it. */
 .chat-more-wrap { position: sticky; bottom: 0; height: 0; display: flex; justify-content: center; }
 .chat-more { position: absolute; bottom: 8px; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px;
-  border: 1px solid var(--hair-strong); background: var(--glass-strong); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border: 1px solid var(--line); background: var(--panel);
   color: var(--text); font: inherit; font-size: 12px; white-space: nowrap; box-shadow: var(--shadow-sm); cursor: pointer; }
 .chat-more:hover { background: var(--panel); }
 @media (prefers-reduced-motion: reduce) { .chat-fold > summary::before, .chat-group-head > .icon, .chat-meta { transition: none; } }

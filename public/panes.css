@@ -19,21 +19,23 @@
 .stack.solo .space-section { flex: 1 1 0; min-height: 0; }
 .stack.solo .pane:not(.max) { display: none; }
 .stack.solo .pane.max { grid-area: 1 / 1 / -1 / -1; }
-.pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: 16px; overflow: hidden;
-  background: var(--term-bg, var(--bg)); border: 1px solid var(--hair-strong); box-shadow: var(--shadow-sm), var(--lift);
-  transition: border-color .25s, box-shadow .25s; animation: paneIn .35s var(--ease); }
+.pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: var(--radius, 10px); overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); transition: border-color .2s, box-shadow .2s; animation: paneIn .2s var(--ease); }
 @keyframes paneIn { from { opacity: 0; transform: scale(.985); } }
 .pane.hidden { display: none; }
-.pane.focus { border-color: transparent; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent), 0 0 0 5px var(--accent-soft); }
-.pane.attn { border-color: transparent; box-shadow: 0 0 0 1px var(--warn), 0 0 0 5px color-mix(in srgb, var(--warn) 14%, transparent); animation: attn 1.6s ease-in-out infinite; }
-@keyframes attn { 50% { box-shadow: 0 0 0 1px var(--warn), 0 0 0 9px transparent; } }
-.pane-head { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 8px 0 10px; flex-shrink: 0; user-select: none;
-  background: var(--panel); border-bottom: 1px solid var(--hair); }
+.pane.focus { border-color: var(--ring, var(--info)); box-shadow: 0 0 0 1px var(--ring, var(--info)); }
+.pane.attn { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); animation: attn 1.6s ease-in-out infinite; }
+@keyframes attn { 50% { box-shadow: 0 0 0 1px var(--warn), 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); } }
+.pane-head { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 12px; flex-shrink: 0; user-select: none;
+  background: var(--panel); border-bottom: 1px solid var(--line); }
 .pane-titles { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; flex: 1; }
-.pane-title { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; letter-spacing: -.01em; }
+.pane-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; letter-spacing: -.01em; }
 .pane-sub { font: 10.5px var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .pane-sub .sep { opacity: .4; }
-.pane-sub button { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; }
+.pane-sub button { border: 0; background: none; padding: 0; color: var(--text); font: inherit; text-decoration: underline; text-decoration-color: var(--hair-strong); text-underline-offset: 2px; cursor: pointer; }
+.pane-sub button:hover { text-decoration-color: currentColor; }
+/* The branch or folder, as a chip like T3 Code's header. */
+.pane-sub .chip { padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; line-height: 16px; color: var(--text); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .pane-tools { display: flex; align-items: center; gap: 2px; }
 /* The context meter on a Claude pane: quiet until the context fills (amber over 70%, red over 90%). On a narrow pane the
    cost goes first, then the whole meter, so the title keeps its room. */
@@ -50,11 +52,11 @@
 @container (max-width: 520px) { .meter-cost { display: none; } }
 @container (max-width: 400px) { .meter { display: none; } }
 /* The Chat | Terminal switch on a Claude pane. Monochrome: the chosen segment is raised with --soft, never the accent. */
-.view-switch { display: inline-flex; flex-shrink: 0; padding: 2px; gap: 2px; border-radius: 9px; background: var(--softer); border: 1px solid var(--hair); }
-.seg { height: 22px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--dim); font-size: 11.5px; font-weight: 600; transition: background .2s, color .2s; }
+.view-switch { display: inline-flex; flex-shrink: 0; padding: 2px; gap: 2px; border-radius: 8px; background: var(--softer); border: 1px solid var(--line); }
+.seg { height: 22px; padding: 0 10px; border: 0; border-radius: 6px; background: none; color: var(--dim); font-size: 11.5px; font-weight: 600; transition: background .2s, color .2s; }
 .seg:hover { color: var(--text); }
 .seg[aria-pressed="true"] { background: var(--soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--hair-strong); }
-.seg:focus-visible { outline-color: var(--text); outline-offset: 0; }
+.seg:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 0; }
 /* In chat mode the context ring lives in the composer, so the header meter would show it twice. */
 .pane.chat-mode .pane-head .meter { display: none; }
 /* Narrow header: the state pill keeps its dot (its title names it) and the avatar steps aside, so the switch keeps both
@@ -66,7 +68,7 @@
   .pane-head .state > span:not(.dot) { display: none; }
   .seg { padding: 0 8px; }
 }
-.pane-body { position: relative; flex: 1; min-height: 0; display: flex; }
+.pane-body { position: relative; flex: 1; min-height: 0; display: flex; background: var(--term-bg, var(--bg)); } /* the terminal's own colour, edge to edge under the card header */
 /* content-box: xterm's fit addon reads this box's CSS width and height as the space to fill, so the padding must not be
    counted in them, or the last column slides under the scrollbar and the bottom row past the edge. */
 .term-host { flex: 1; min-width: 0; padding: 10px 6px 6px 12px; box-sizing: content-box; }
@@ -75,21 +77,21 @@
 .term-peek .xterm { height: auto; }
 .term-host .xterm-viewport { scrollbar-width: thin; background-color: transparent; } /* xterm.css paints it black, and it shows below the last row */
 /* Drop markers while dragging a chat or a pane into the grid. */
-.pane.drop-before { box-shadow: inset 4px 0 0 var(--accent), 0 0 0 1px var(--accent); }
-.pane.drop-after { box-shadow: inset -4px 0 0 var(--accent), 0 0 0 1px var(--accent); }
-.grid.one-col .pane.drop-before { box-shadow: inset 0 4px 0 var(--accent), 0 0 0 1px var(--accent); }
-.grid.one-col .pane.drop-after { box-shadow: inset 0 -4px 0 var(--accent), 0 0 0 1px var(--accent); }
-.grid.drop-end { outline: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: -6px; border-radius: 18px; }
+.pane.drop-before { box-shadow: inset 4px 0 0 var(--ring, var(--info)), 0 0 0 1px var(--ring, var(--info)); }
+.pane.drop-after { box-shadow: inset -4px 0 0 var(--ring, var(--info)), 0 0 0 1px var(--ring, var(--info)); }
+.grid.one-col .pane.drop-before { box-shadow: inset 0 4px 0 var(--ring, var(--info)), 0 0 0 1px var(--ring, var(--info)); }
+.grid.one-col .pane.drop-after { box-shadow: inset 0 -4px 0 var(--ring, var(--info)), 0 0 0 1px var(--ring, var(--info)); }
+.grid.drop-end { outline: 2px dashed var(--ring, var(--info)); outline-offset: -6px; border-radius: var(--radius, 10px); }
 .pane.dragging { opacity: .45; }
 .pane-head[draggable="true"] { cursor: grab; }
-.exit-bar { display: none; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--hair); background: var(--glass); font-size: 12px; color: var(--dim); }
+.exit-bar { display: none; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--dim); }
 .pane.exited .exit-bar { display: flex; }
 .pane.exited .term-host { opacity: .65; filter: saturate(.6); }
 .pane iframe { flex: 1; border: 0; width: 100%; background: #fff; }
-.url-input { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--hair-strong); border-radius: 9px; background: color-mix(in srgb, var(--bg) 70%, transparent); padding: 0 11px; font: 12px var(--mono); outline: none; transition: border-color .2s, box-shadow .2s; }
-.url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.url-input { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--hair-strong); border-radius: 8px; background: var(--bg); padding: 0 11px; font: 12px var(--mono); outline: none; transition: border-color .2s, box-shadow .2s; }
+.url-input:focus { border-color: var(--ring, var(--info)); box-shadow: 0 0 0 1px var(--ring, var(--info)); }
 
-.blocks { width: 300px; border-left: 1px solid var(--hair); background: var(--glass); backdrop-filter: blur(20px); display: none; flex-direction: column; min-height: 0; }
+.blocks { width: 300px; border-left: 1px solid var(--line); background: var(--panel); display: none; flex-direction: column; min-height: 0; }
 .pane.show-blocks .blocks { display: flex; animation: slide .25s var(--ease); }
 .blocks-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-weight: 650; border-bottom: 1px solid var(--hair); }
 .blocks-list { overflow: auto; flex: 1; padding: 8px; display: flex; flex-direction: column; gap: 4px; }

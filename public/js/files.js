@@ -165,7 +165,7 @@ function renderStatus() {
     h('span', {}, active.path.replace(`${rootDir}/`, '')), h('span', { class: 'grow' }),
     h('span', {}, active.model.getLanguageId()),
     pos && h('span', {}, `Ln ${pos.lineNumber}, Col ${pos.column}`),
-    h('span', { style: { color: dirty(active) ? 'var(--accent)' : '' } }, dirty(active) ? 'Unsaved' : 'Saved'),
+    h('span', { style: { color: dirty(active) ? 'var(--warn)' : '' } }, dirty(active) ? 'Unsaved' : 'Saved'),
   ].filter(Boolean));
 }
 

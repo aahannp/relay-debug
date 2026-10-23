@@ -1,81 +1,115 @@
-:root { --side-w: 256px; --bar-h: 52px; --row-r: 8px; } /* T3's 16rem */
-.app { grid-template-columns: var(--side-w) 1fr; }
-.app.no-side { grid-template-columns: 1fr; }
+/* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
+   The shell: T3's flat sidebar (16rem, offcanvas, a resize rail), the fixed sidebar toggle, the top bar and status bar. */
+:root { --side-w: 256px; --bar-h: 52px; --row-r: 8px; } /* T3's 16rem; app.js sets --side-w from the rail */
+.app { grid-template-columns: var(--side-w) 1fr; overflow: hidden; transition: grid-template-columns .2s linear; }
+.app.no-side { grid-template-columns: 0px 1fr; }
+.app.side-resizing { transition: none; cursor: col-resize; user-select: none; }
 .side :focus-visible, .topbar :focus-visible, .side-toggle-wrap :focus-visible { outline: 2px solid var(--ring, var(--hair-strong)); outline-offset: -2px; }
-/* The sidebar toggle and the title controls sit fixed over the top bar (T3's layout). For now the toggle stays exactly
-   where it was inside the bar: the bar keeps room for it (16px + 28px button + 8px). */
+
+/* The toggle stays in the top-left corner whether the sidebar is in or out (T3's --workspace-controls-left). */
 .side-toggle { -webkit-app-region: no-drag; }
 .side-toggle-wrap, .title-controls { position: fixed; top: 0; z-index: 5; height: calc(var(--bar-h) - 1px); display: flex; align-items: center; }
-.side-toggle-wrap { left: calc(var(--side-w) + 16px); }
-.app.no-side .side-toggle-wrap { left: 16px; }
-.is-app .app.no-side .side-toggle-wrap { left: 84px; }
+.side-toggle-wrap { left: 12px; }
+.is-app .side-toggle-wrap { left: 90px; } /* after the traffic lights */
 .title-controls { right: 12px; gap: 4px; }
 .title-controls:empty { display: none; }
-.side { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 0 8px 8px; background: var(--side); border-right: 1px solid var(--hair); }
-.side > * { flex-shrink: 0; } /* only the spaces and chats lists give way */
-.side-top { height: var(--bar-h); margin: 0 -8px 8px; padding: 0 16px; display: flex; align-items: center; border-bottom: 1px solid var(--hair); -webkit-app-region: drag; }
-.is-app .side-top { padding-left: 88px; }
-.brand { display: flex; align-items: center; gap: 8px; font: 600 14px var(--display); letter-spacing: -.01em; }
-.brand .ver { font: 500 10px var(--mono); color: var(--dim); background: none; border: 1px solid var(--hair-strong); border-radius: 99px; padding: 1px 6px; -webkit-app-region: no-drag; }
-.brand .ver:hover { color: var(--text); border-color: var(--dim); }
-.brand .debug-tag { font: 500 10px var(--mono); color: var(--dim); border: 1px solid var(--hair-strong); border-radius: 4px; padding: 1px 5px; -webkit-app-region: no-drag; }
-.brand .ver.new { color: var(--info); border-color: var(--info); }
-.logo { width: 22px; height: 22px; }
 
-/* Rows: one shape for the nav, spaces, chats and footer. A hover is --softer, the open one --soft. */
-.nav { display: flex; flex-direction: column; gap: 2px; }
-.nav-item { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border: 0; border-radius: var(--row-r); background: none; color: var(--dim); text-align: left; font-size: 13px; font-weight: 500; transition: background .15s, color .15s; }
-.nav-item:hover { background: var(--softer); color: var(--text); }
-.nav-item.active { color: var(--text); background: var(--soft); }
-.nav-item .count { margin-left: auto; font: 500 10.5px var(--mono); color: var(--dim); min-width: 18px; text-align: center; padding: 0 5px; border-radius: 99px; background: var(--softer); }
-.nav-item .count.attn { color: var(--warn); background: var(--soft); }
-.side-label { display: flex; align-items: center; gap: 8px; font: 500 11px var(--display); color: var(--dim); padding: 16px 10px 4px; }
-.side-fold { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; }
-.side-fold:hover { color: var(--text); }
-.running { flex: 2 1 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; max-height: max-content; }
-.run-item { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border: 0; background: none; border-radius: var(--row-r); color: var(--dim); text-align: left; font-size: 12px; transition: background .15s, color .15s; }
-.run-item:hover { background: var(--softer); color: var(--text); }
-.run-item .avatar.sm { width: 16px; height: 16px; border-radius: 5px; font-size: 8.5px; }
-.run-item .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-.run-empty { color: var(--dim); font-size: 12px; padding: 6px 10px; opacity: .6; }
-.run-item .when { font: 10.5px var(--mono); color: var(--dim); flex-shrink: 0; }
-.run-item.chat { color: var(--dim); }
-.run-item.gone { opacity: .45; }
-.run-item.off .name { opacity: .55; } /* hidden from the grid, still running */
-.side-label.sub { padding: 12px 10px 4px; }
-.spaces { display: flex; flex-direction: column; gap: 2px; overflow: auto; flex: 3 1 0; min-height: 0; max-height: max-content; } /* the two lists share the room 60/40 when both are long; whatever one doesn't need goes to the other */
-.space { border-radius: var(--row-r); }
-.space.current { background: var(--soft); }
-.space-row { display: flex; align-items: center; gap: 2px; height: 32px; padding: 0 4px 0 2px; border-radius: var(--row-r); }
-.space-row:hover { background: var(--softer); }
-.space.current .space-row:hover { background: none; }
-.space-chev .icon { transition: transform .15s; }
-.space-chev.open .icon { transform: rotate(90deg); }
-.space-main { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; padding: 0 4px; border: 0; background: none; border-radius: 6px; text-align: left; color: var(--text); }
-.space-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.space-sum { margin-left: auto; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
-.space-sum.attn { color: var(--warn); }
-.space-row .icon-btn:not(.space-chev) { display: none; }
-.space-row:hover .icon-btn, .space-row:focus-within .icon-btn, .space.current .space-row .icon-btn { display: inline-grid; } /* the actions take the place of the time, like T3's thread rows */
-.space-row:hover .space-sum, .space-row:focus-within .space-sum { display: none; }
-.space-row .space-beside[aria-pressed="true"] { display: inline-grid; color: var(--text); background: var(--soft); } /* shown beside the current one in the grid */
-.space-beside[hidden], .space-row .space-beside[hidden] { display: none; }
-.space.beside:not(.current) { box-shadow: inset 2px 0 0 var(--hair-strong); }
-.space-agents { display: flex; flex-direction: column; gap: 1px; padding: 0 0 6px 18px; }
-.space-agents[hidden] { display: none; }
-.space-new { margin-top: 2px; }
-.side-foot { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; margin-top: auto; border-top: 1px solid var(--hair); }
-.voice-btn, .palette-btn { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: var(--row-r); border: 0; background: none; color: var(--dim); font-size: 13px; font-weight: 500; transition: background .15s, color .15s; }
-.voice-btn kbd, .palette-btn kbd { margin-left: auto; }
-.voice-btn:hover, .palette-btn:hover { background: var(--softer); color: var(--text); }
-.voice-btn.live { background: var(--soft); color: var(--bad); animation: breathe 1.8s ease-in-out infinite; }
-.voice-btn.live kbd { color: inherit; border-color: currentColor; background: none; }
-@keyframes breathe { 50% { background: var(--softer); } }
+/* Offcanvas: the sidebar keeps its width and slides out with its column; app.js makes it inert while it's away. */
+.side { position: relative; width: var(--side-w); display: flex; flex-direction: column; min-height: 0; background: var(--side); border-right: 1px solid var(--hair); transition: transform .2s linear; }
+.app.no-side .side { display: flex; transform: translateX(-100%); }
+.app.side-resizing .side { transition: none; }
+.side > * { flex-shrink: 0; }
+.side-top { height: var(--bar-h); padding: 0 16px 0 48px; display: flex; align-items: center; -webkit-app-region: drag; } /* 48px: room for the toggle */
+.is-app .side-top { padding-left: 126px; }
+.brand { display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 14px var(--display); letter-spacing: -.01em; }
+.logo { width: 20px; height: 20px; }
+
+/* The search row: an h-8 field, then 28px icon buttons. */
+.side-head { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px; }
+.side-head[hidden], .side-head [hidden] { display: none; }
+.side-search { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; color: var(--dim); cursor: text; transition: background .15s; }
+.side-search:hover, .side-search:focus-within { background: var(--softer); }
+.side-search:focus-within { box-shadow: inset 0 0 0 1px var(--ring, var(--hair-strong)); }
+.side-search-input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: none; color: var(--text); font: 500 13px inherit; font-family: inherit; outline: none; }
+.side-search-input::placeholder { color: var(--dim); }
+.side-search-input::-webkit-search-cancel-button { display: none; }
+.side-clear.icon-btn { width: 20px; height: 20px; flex-shrink: 0; }
+.side-head-btns { display: flex; gap: 2px; flex-shrink: 0; }
+.side-icon { color: var(--dim); }
+.side-icon:hover { color: var(--text); }
+
+/* The list: cards for open threads, then the shelves. */
+.side-body { flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 0 8px 8px; }
+.thread { display: flex; width: 100%; min-width: 0; border: 0; border-radius: 6px; background: none; color: var(--text); text-align: left; transition: background .15s; }
+.thread:hover { background: var(--softer); }
+.thread.current { background: var(--soft); }
+.thread:focus-visible { outline-offset: -2px; }
+.thread-card { height: 78px; flex-direction: column; padding: 10px 8px; flex-shrink: 0; } /* T3's h-[4.875rem] card row */
+.thread-top { height: 20px; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--dim); }
+.thread-project { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread-status { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.thread-status:not(.working):not(.needs-input) .dot { display: none; } /* calm threads show their time instead */
+.thread-status.working { color: var(--info); }
+.thread-status.needs-input { color: var(--warn); }
+.thread-status .dot.working, .thread-status .dot.needs-input { background: currentColor; box-shadow: none; } /* the dot takes its label's colour */
+.thread-title { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 500; }
+.thread-title > span, .thread.slim .thread-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thread-title .icon { color: var(--dim); flex-shrink: 0; }
+.thread-card .thread-title { margin-top: 4px; }
+.thread-meta { margin-top: 2px; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; }
+.thread-branch { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11px; }
+.thread.off .thread-title { opacity: .55; } /* hidden from the grid, still running */
+.thread.slim { height: 36px; flex-shrink: 0; align-items: center; gap: 10px; padding: 0 10px; }
+.thread.slim .thread-title { flex: 1; display: block; }
+.thread.slim .monogram { opacity: .4; filter: grayscale(1); transition: opacity .15s, filter .15s; }
+.thread.slim:hover .monogram, .thread.slim:focus-visible .monogram { opacity: 1; filter: none; }
+.thread-when { flex-shrink: 0; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.thread.slim.gone { opacity: .45; cursor: default; }
+.thread.more { gap: 8px; font-size: 13px; color: color-mix(in srgb, var(--dim) 80%, transparent); }
+.thread.more:hover { color: var(--text); }
+/* T3's ProjectMonogram: a 16px square tinted by its own text colour. */
+.monogram { width: 16px; height: 16px; flex-shrink: 0; display: inline-grid; place-items: center; border-radius: 4px; background: color-mix(in srgb, currentColor 14%, transparent); font: 700 8.25px var(--mono); color: var(--text); }
+.shelves { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 8px; }
+.shelves:empty { display: none; }
+.shelf { height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 6px; background: none; font-size: 12px; font-weight: 500; color: color-mix(in srgb, var(--dim) 60%, transparent); text-align: left; }
+.shelf:hover { color: var(--dim); }
+.shelf-rule { flex: 1; height: 1px; background: color-mix(in srgb, var(--hair) 60%, transparent); }
+.shelf .icon { transition: transform .15s; }
+.shelf[aria-expanded="false"] .icon { transform: rotate(180deg); }
+.side-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0; padding: 24px 8px; text-align: center; font-size: 12px; color: color-mix(in srgb, var(--dim) 60%, transparent); }
+.side-empty-add { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--hair-strong); border-radius: 6px; background: none; font-size: 12px; color: var(--text); }
+.side-empty-add:hover { background: var(--softer); }
+
+/* Settings: the list becomes its sections. */
+.side-sections { display: flex; flex-direction: column; gap: 2px; }
+.side-row { height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; width: 100%; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--dim); text-align: left; font-size: 13px; font-weight: 500; transition: background .15s, color .15s; }
+.side-row:hover { background: var(--softer); color: var(--text); }
+.side-row.active { background: var(--soft); color: var(--text); }
+
+/* The footer: icons, the version pill on the right. */
+.side-foot { display: flex; align-items: center; gap: 2px; padding: 8px; border-top: 1px solid var(--hair); }
+.side-foot .side-back { flex: 1; width: auto; }
+.side-ver { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
+.side-ver .ver { font: 500 10px var(--mono); color: var(--dim); background: none; border: 1px solid var(--hair-strong); border-radius: 99px; padding: 1px 6px; }
+.side-ver .ver:hover { color: var(--text); border-color: var(--dim); }
+.side-ver .ver.new { color: var(--info); border-color: var(--info); }
+.side-ver .debug-tag { font: 500 10px var(--mono); color: var(--dim); border: 1px solid var(--hair-strong); border-radius: 4px; padding: 1px 5px; }
+
+/* The rail: 16px to grab across the edge, a 2px line on hover. */
+.side-rail { position: absolute; top: 0; bottom: 0; right: -8px; width: 16px; z-index: 4; cursor: col-resize; }
+.side-rail::after { content: ''; position: absolute; top: 0; bottom: 0; left: 7px; width: 2px; background: transparent; transition: background .15s; }
+.side-rail:hover::after, .side-resizing .side-rail::after { background: var(--hair-strong); }
+.app.no-side .side-rail { display: none; }
+
+/* The project filter's popup. */
+.side-projects .monogram { margin: 0 2px; }
+.side-projects .menu-item .sub { margin-left: 0; padding-left: 0; }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.topbar { height: var(--bar-h); display: flex; align-items: center; gap: 12px; padding: 0 12px 0 52px; -webkit-app-region: drag; flex-shrink: 0; border-bottom: 1px solid var(--hair); background: var(--bg); }
+.topbar { height: var(--bar-h); display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; -webkit-app-region: drag; flex-shrink: 0; border-bottom: 1px solid var(--hair); background: var(--bg); }
 .topbar button, .topbar input, .topbar select { -webkit-app-region: no-drag; }
-.is-app .app.no-side .topbar { padding-left: 120px; } /* the traffic lights, then the toggle */
+.app.no-side .topbar { padding-left: 52px; } /* the sidebar is away: clear the toggle */
+.is-app .app.no-side .topbar { padding-left: 130px; } /* the traffic lights, then the toggle */
 .crumbs { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .view-icon { width: 28px; height: 28px; border-radius: var(--row-r); display: grid; place-items: center; flex-shrink: 0; color: var(--dim); background: var(--soft); }
 .crumbs .titles { display: flex; align-items: baseline; gap: 10px; line-height: 1.2; min-width: 0; }
@@ -94,3 +128,4 @@
 .status-bar .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 .status-bar .live-dot.off { background: var(--bad); }
 .status-bar .warn { color: var(--warn); }
+.app.layout-thread .status-bar { display: none; } /* T3's thread layout has no status bar */

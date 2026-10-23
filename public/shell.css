@@ -1,4 +1,4 @@
-:root { --side-w: 256px; --bar-h: 52px; --row-r: 8px; } /* T3's 16rem, in px: html is 13px here, not 16px */
+:root { --side-w: 256px; --bar-h: 52px; --row-r: 8px; } /* T3's 16rem */
 .app { grid-template-columns: var(--side-w) 1fr; }
 .app.no-side { grid-template-columns: 1fr; }
 .side :focus-visible, .topbar :focus-visible { outline: 2px solid var(--ring, var(--hair-strong)); outline-offset: -2px; }

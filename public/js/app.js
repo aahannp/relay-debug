@@ -202,9 +202,9 @@ function renderSpaces() {
           'aria-label': `Show agents in ${p.name}`, title: isOpen ? 'Hide agents' : 'Show agents', onClick: () => toggleExpanded(p.path) }, icon('chevronRight', 12)),
         h('button', { class: 'space-main', 'data-key': `main:${p.path}`, 'aria-current': current ? 'true' : null, title: `${ltr(p.path.replace(state.info.home, '~'))}\n⌘-click to show it beside the others`,
           'aria-label': `${p.name}, ${summary}`, onClick: e => (e.metaKey || e.ctrlKey ? toggleBeside(p.path) : switchProject(p.path)), onContextmenu: e => spaceMenu(e, p) },
+          h('span', { class: `dot ${waiting ? 'needs-input' : statuses.includes('working') ? 'working' : statuses.length ? 'idle' : 'exited'}` }),
           h('span', { class: 'space-name' }, p.name),
-          h('span', { class: `space-sum${waiting ? ' attn' : ''}` },
-            ...statuses.slice(0, 8).map(x => h('span', { class: `dot ${x}` })), h('span', {}, summary))),
+          h('span', { class: `space-sum${waiting ? ' attn' : ''}` }, summary)),
         h('button', { class: 'icon-btn sm space-beside', 'data-key': `beside:${p.path}`, 'aria-pressed': String(beside), hidden: current && open.length < 2,
           'aria-label': `Show ${p.name} beside`, title: beside ? `Hide ${p.name} from the grid` : `Show ${p.name} beside the others in the grid`,
           onClick: () => toggleBeside(p.path) }, icon('stack', 13)),
@@ -212,7 +212,7 @@ function renderSpaces() {
           onClick: () => actions.newSession({ project: p.path }) }, icon('plus', 13))),
       h('div', { class: 'space-agents', id: `space-${i}`, hidden: !isOpen },
         ...(shown.length ? agents.map((s, j) => !byAgent(s) && h('button', { class: 'run-item', 'data-key': `agent:${s.id}`, title: s.cwd, onClick: () => actions.focusSession(s.id) },
-          avatar(s, true), h('span', { class: 'name' }, chatTitle(s)), h('span', { class: `dot ${statuses[j]}`, title: STATUS_LABEL[statuses[j]] ?? '' }))).filter(Boolean)
+          h('span', { class: `dot ${statuses[j]}`, title: STATUS_LABEL[statuses[j]] ?? '' }), avatar(s, true), h('span', { class: 'name' }, chatTitle(s)))).filter(Boolean)
           : [h('div', { class: 'run-empty' }, 'Nothing running')])));
   }), h('button', { class: 'run-item space-new', 'data-key': 'new', onClick: () => addProject() }, icon('plus', 13), h('span', { class: 'name' }, 'New space')));
   el.scrollTop = scrolled;
@@ -257,14 +257,14 @@ function renderChats(unordered) {
     'aria-label': actions.isHidden?.(s.id) ? `${chatTitle(s)}, hidden` : null, draggable: true, onDragstart: drag(DRAG.pane, s.id),
     onClick: () => actions.focusSession(s.id),
     onContextmenu: e => s.chatId && chatMenu(e, state.chats.find(c => c.id === s.chatId)),
-  }, avatar(s, true), h('span', { class: 'name' }, chatTitle(s)), actions.isHidden?.(s.id) && icon('eyeOff', 12), h('span', { class: `dot ${actions.statusOf?.(s) ?? s.status}` }));
+  }, h('span', { class: `dot ${actions.statusOf?.(s) ?? s.status}` }), avatar(s, true), h('span', { class: 'name' }, chatTitle(s)), actions.isHidden?.(s.id) && icon('eyeOff', 12));
   const open = sessions.map(item);
   const earlierItem = c => h('button', {
     class: `run-item chat${c.folderMissing ? ' gone' : ''}`, draggable: !c.folderMissing, onDragstart: drag(DRAG.chat, c.id),
     title: c.folderMissing ? `Its folder is gone: ${c.cwd}` : `Click or drag into the grid to ${c.resumable ? 'pick this chat up again' : 'start it again'}`,
     onClick: () => !c.folderMissing && actions.openChat(c.id),
     onContextmenu: e => chatMenu(e, c),
-  }, avatar(c, true), h('span', { class: 'name' }, c.title), h('span', { class: 'when' }, ago(c.lastActiveAt).replace(' ago', '')));
+  }, h('span', { class: 'dot exited' }), avatar(c, true), h('span', { class: 'name' }, c.title), h('span', { class: 'when' }, ago(c.lastActiveAt).replace(' ago', '')));
   const earlier = recent.map(earlierItem);
   const agentOnes = [
     ...unlisted.filter(byAgent).map(item),

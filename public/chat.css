@@ -1,20 +1,25 @@
 /* Chat view of a Claude pane (chat.js): monochrome, the terminal hidden but still mounted underneath.
    The lane, bubbles, work log, timer, divider and markdown sizes are adapted from T3 Code (https://github.com/pingdotgg/t3code,
    MIT, © 2026 T3 Tools Inc.): apps/web/src/index.css, TimelineUserMessageRow.tsx, TimelineWorkGroupRows.tsx,
-   MessagesTimeline.tsx and MarkdownCodeBlock.tsx. The pane, not the window, sets the width, so it's a container. */
+   MessagesTimeline.tsx and MarkdownCodeBlock.tsx. The pane, not the window, sets the width, so it's a container.
+   Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE. */
 .chat { display: none; flex: 1; min-width: 0; flex-direction: column; position: relative; container-type: inline-size; }
 .pane.chat-mode .chat { display: flex; }
 .pane.chat-mode .term-host { display: none; }
-.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 12px 6px; scrollbar-width: thin; }
-.chat-lane { max-width: 46rem; margin-inline: auto; }
+/* The composer (composer.css) floats over the foot, so the list is padded by its height (--composer-h, set by chat.js). */
+.chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 12px calc(var(--composer-h, 140px) + 8px); scrollbar-width: thin;
+  display: flex; flex-direction: column; }
+.chat-lane { flex: 1 0 auto; width: 100%; max-width: 46rem; margin-inline: auto; display: flex; flex-direction: column; }
 @container (min-width: 640px) { .chat-scroll { padding-inline: 48px; } }
-.chat-list { display: flex; flex-direction: column; gap: 8px; }
-.chat-hint { color: var(--dim); font-size: 12px; padding: 4px 0; }
+.chat-list { display: flex; flex-direction: column; }
+.chat-list > * { margin-bottom: 8px; }
+/* An empty thread says so in the middle; an error reads the same way. */
+.chat-hint { flex: 1; display: grid; place-items: center; text-align: center; padding: 16px; color: color-mix(in srgb, var(--dim) 30%, transparent); font-size: 14px; }
 
 /* Your messages: a bubble on the right; another agent's says who sent it above. Hover shows the time and a copy button. */
-.chat-user { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.chat-list > .chat-user { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; margin-bottom: 16px; }
 .chat-from { color: var(--dim); font-size: 11.5px; padding-right: 4px; }
-.chat-bubble { max-width: 80%; padding: 10px 12px; border-radius: 16px; background: var(--soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-bubble { max-width: 80%; padding: 12px; border-radius: 16px; background: var(--soft); white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat-bubble.clamp { max-height: 11rem; overflow: hidden; }
 .chat-bubble.tall { -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
 .chat-expand { display: none; }
@@ -27,18 +32,18 @@
 .chat-copy { width: 22px; height: 22px; border-radius: 6px; }
 
 /* Claude's words: a plain column. */
-.chat-text { font-size: 13.5px; line-height: 1.6; }
+.chat-text { font-size: 14px; line-height: 1.625; }
 .chat-text > .chat-meta { margin-top: 2px; }
 .chat-note { color: var(--dim); font-size: 12px; }
 .chat-note code { color: var(--text); }
 
-/* The work log: one 24px line per group, no card; the entries open beneath it, scrolling past min(18rem, 50dvh). */
-.chat-group-head { display: flex; align-items: center; gap: 6px; width: 100%; height: 24px; padding: 0 4px; border: 0; border-radius: 6px;
-  background: none; color: var(--dim); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+/* The work log: one line per group over a soft rule, its chevron after the words; the entries open beneath, scrolling past min(18rem, 50dvh). */
+.chat-group-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 0 8px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 0; background: none; color: var(--dim); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .chat-group-head:hover { color: var(--text); }
+.chat-group-head > .chat-label { flex: 0 1 auto; color: inherit; }
 .chat-group-head > .icon { flex: none; transform: rotate(-90deg); transition: transform .15s; }
 .chat-group-head[aria-expanded="true"] > .icon { transform: none; }
-.chat-group-head .chat-label { color: inherit; }
 .chat-group-head:focus-visible, .chat-fold > summary:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: -2px; }
 .chat-group-body { display: flex; flex-direction: column; }
 .chat-group.many .chat-group-body { margin: 2px 0 2px 10px; padding-left: 8px; border-left: 1px solid var(--hair); max-height: min(18rem, 50dvh); overflow-y: auto; }
@@ -77,13 +82,14 @@
 
 /* "Working for 12s" while Claude works, then a "Worked for 44s" divider when the turn ends. */
 .chat-working, .chat-turn { padding: 4px 4px 8px; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
-.chat-working { padding-top: 10px; }
+.chat-working { display: flex; align-items: center; height: 24px; padding: 0 4px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.chat-working[hidden] { display: none; }
 .chat-turn { border-bottom: 1px solid var(--hair); }
 
 .chat-compact { text-align: center; color: var(--dim); font-size: 12px; }
 .chat-compact > summary { cursor: pointer; display: flex; align-items: center; gap: 10px; list-style: none; }
 .chat-compact > summary::-webkit-details-marker { display: none; }
-.chat-compact > summary::before, .chat-compact > summary::after { content: ''; flex: 1; border-top: 1px solid var(--hair-strong); }
+.chat-compact > summary::before, .chat-compact > summary::after { content: ''; flex: 1; height: 1px; background: color-mix(in srgb, var(--line) 70%, transparent); }
 .chat-compact .md { text-align: left; padding: 8px 4px 0; color: var(--text); }
 
 /* Markdown, here only: a 0.65em rhythm, small rounded inline code, code blocks as cards, tables with row rules. Links stay plain. */
@@ -99,10 +105,13 @@
 .chat .md th, .chat .md td { border: 0; border-bottom: 1px solid var(--hair); }
 .chat .md th { background: none; border-bottom-color: var(--hair-strong); }
 
-/* "Scroll to end": a strip of no height stuck to the scroller's foot, with the pill just above it. */
-.chat-more-wrap { position: sticky; bottom: 0; height: 0; display: flex; justify-content: center; }
-.chat-more { position: absolute; bottom: 8px; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--panel);
-  color: var(--text); font: inherit; font-size: 12px; white-space: nowrap; box-shadow: var(--shadow-sm); cursor: pointer; }
-.chat-more:hover { background: var(--panel); }
+/* "Scroll to end": a small glass pill floating just above the composer, however tall that grows. */
+.chat-more { position: absolute; z-index: 21; left: 50%; bottom: calc(var(--composer-h, 140px) + 8px); translate: -50% 0;
+  display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px 0 8px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); background: color-mix(in srgb, var(--panel) 80%, transparent);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  color: var(--dim); font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow-sm); cursor: pointer; }
+.chat-more:hover { color: var(--text); }
+.chat-more[hidden] { display: none; }
+.chat-more:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .chat-fold > summary::before, .chat-group-head > .icon, .chat-meta { transition: none; } }

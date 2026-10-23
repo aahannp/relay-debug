@@ -1,7 +1,8 @@
 // Chat view of a Claude pane: the same conversation as its terminal, read from Claude Code's transcript.
 // The terminal stays mounted underneath, so switching back is instant and Claude's screen is never disturbed.
 // The server sends only what's new ({ sid, size, reset, prompting, menu, items }); the page only appends.
-// Runs of tool calls fold into one work-log line (worklog.js), as in T3 Code.
+// Runs of tool calls fold into one work-log line (worklog.js), as in T3 Code; the composer floats over the list's foot.
+// Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
 import { api, copy, h, icon, markdown, on } from './ui.js';
 import { loadMonaco } from './monaco.js';
 import { composer } from './composer.js';
@@ -72,18 +73,27 @@ export function chatView(p) {
   const waiting = new Map(); // tool id -> the tool, until its result comes; the last one is what Claude may be asking about
 
   const list = h('div', { class: 'chat-list', role: 'log', 'aria-label': 'Conversation' });
-  const hint = h('div', { class: 'chat-hint' }, 'Nothing here yet.');
+  const EMPTY = 'Send a message to start the conversation.';
+  const hint = h('div', { class: 'chat-hint' }, EMPTY);
   const working = h('div', { class: 'chat-working', hidden: true });
-  const more = h('button', { class: 'chat-more', hidden: true, onClick: () => toEnd() }, icon('chevron', 12), 'Scroll to end');
-  // The button sits in a sticky strip at the scroller's foot, so it stays just above the composer however tall that grows.
-  const scroller = h('div', { class: 'chat-scroll', onScroll: () => { if (atBottom()) more.hidden = true; } },
-    h('div', { class: 'chat-lane' }, hint, list, working, h('div', { class: 'chat-more-wrap' }, more)));
+  const more = h('button', { type: 'button', class: 'chat-more', hidden: true, onClick: () => toEnd() }, icon('chevronDown', 14), 'Scroll to end');
+  let pinned = true; // at the end when last scrolled, so a reflow keeps it there
+  const scroller = h('div', { class: 'chat-scroll', onScroll: () => { pinned = atBottom(); if (pinned) more.hidden = true; } },
+    h('div', { class: 'chat-lane' }, hint, list, working));
   const c = composer(p);
   c.el.addEventListener('sent', () => toEnd());
-  const el = h('div', { class: 'chat' }, scroller, c.el);
+  // Keys 1–9 answer the docked panel from anywhere in this view; the listener goes when the pane does.
+  const el = h('div', { class: 'chat', onKeydown: c.keys }, scroller, more, c.el);
+  // The composer floats over the list: the list is padded by its height (chat.css), and the pill sits just above it.
+  // When the composer, the pane or the rows change size, a list that was at its end stays there.
+  const resized = new ResizeObserver(() => {
+    el.style.setProperty('--composer-h', `${c.el.offsetHeight}px`);
+    if (pinned) toEnd();
+  });
+  for (const x of [c.el, scroller, scroller.firstElementChild]) resized.observe(x);
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
-  const toEnd = () => { scroller.scrollTop = scroller.scrollHeight; more.hidden = true; };
+  const toEnd = () => { scroller.scrollTop = scroller.scrollHeight; more.hidden = true; pinned = true; };
 
   function count() {
     if (!el.isConnected && tick) { clearInterval(tick); tick = 0; } // the pane closed
@@ -125,7 +135,7 @@ export function chatView(p) {
       menu = r.menu ?? null;
       add(r.items, r.reset);
       lock();
-      hint.textContent = 'Nothing here yet.';
+      hint.textContent = EMPTY;
     } catch (e) {
       hint.textContent = `Couldn't read the conversation: ${e.message}`;
     } finally {
@@ -171,7 +181,7 @@ export function chatView(p) {
       g.head = h('button', { class: 'chat-group-head', 'aria-expanded': 'false', onClick: () => {
         g.head.setAttribute('aria-expanded', String(g.head.getAttribute('aria-expanded') !== 'true'));
         refresh(g);
-      } }, icon('chevron', 12), g.text, g.mark);
+      } }, g.text, g.mark, icon('chevronDown', 14));
       g.body = h('div', { class: 'chat-group-body' });
       g.el = h('div', { class: 'chat-group' }, g.head, g.body);
       list.append(g.el);

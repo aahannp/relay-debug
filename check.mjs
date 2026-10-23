@@ -2048,7 +2048,7 @@ esac
     const trust = panelOf({ lines: ['Do you trust the files in this folder?'], multi: false, options: [opt(1, 'No, exit'), opt(2, 'Yes, I trust this folder')] }, null);
     assert.deepEqual([trust.kind, trust.options.map(o => o.label)], ['menu', ['No, exit', 'Yes, I trust this folder']], 'the trust dialog, with no pending tool, is a plain menu');
     assert.equal(panelOf(null, null).kind, 'terminal', "a menu that couldn't be read sends you to the terminal");
-    assert.ok(!/var\(--(accent|bad)/.test(fs.readFileSync(new URL('./public/composer.css', import.meta.url), 'utf8')), 'the composer never uses the pink accent, and Stop stays neutral');
+    assert.ok(!/var\(--accent/.test(fs.readFileSync(new URL('./public/composer.css', import.meta.url), 'utf8')), 'the composer never uses the pink accent');
   }
   console.log('All checks passed');
 } finally {

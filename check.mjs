@@ -2025,6 +2025,31 @@ esac
     assert.deepEqual([12000, 65000, 3725000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s']);
     assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');
   }
+  // Chat v2 T3: the composer's docked panel, for the menus parseMenu reads off the screen (shapes from its fixtures)
+  {
+    const { panelOf } = await import('./public/js/composer.js');
+    const opt = (n, label, typed = false) => ({ n, label, current: n === 1, typed });
+    const bash = { lines: ['Bash command', 'touch made-by-bash.txt', 'Do you want to proceed?'], multi: false, options: [opt(1, 'Yes'), opt(2, 'Yes, and always allow access'), opt(3, 'No')] };
+    const p1 = panelOf(bash, { id: 't1', name: 'Bash', detail: 'touch made-by-bash.txt' });
+    assert.deepEqual([p1.kind, p1.title, p1.body, p1.options.map(o => o.n)], ['approval', 'Command approval', 'touch made-by-bash.txt', [1, 2, 3]], 'a pending Bash tool is a command approval, with the options on screen');
+    assert.equal(panelOf(bash, { id: 't2', name: 'Edit', detail: 'a.txt' }).title, 'File change approval');
+    assert.equal(panelOf(bash, { id: 't3', name: 'mcp__x__y', detail: '' }).title, 'Tool approval');
+    const ask = [{ header: 'Colour', question: 'Which colour do you like?', multiSelect: false, options: [{ label: 'Red', description: 'Warm' }, { label: 'Blue', description: 'Cool' }] }];
+    const single = { lines: ['☐ Colour', 'Which colour do you like?'], multi: false, options: [opt(1, 'Red'), opt(2, 'Blue'), opt(3, 'Type something.', true), opt(4, 'Chat about this')] };
+    const p2 = panelOf(single, { id: 't4', name: 'AskUserQuestion', ask });
+    assert.deepEqual([p2.kind, p2.title, p2.body, p2.step, p2.options], ['question', 'Colour', 'Which colour do you like?', '', [
+      { n: 1, label: 'Red', description: 'Warm' }, { n: 2, label: 'Blue', description: 'Cool' }, { n: 4, label: 'Chat about this', description: undefined }]], 'a question: descriptions matched by label, and the free-text row left to the terminal');
+    const two = [{ header: 'Pet', question: 'Which pet do you like?', options: [{ label: 'Cat' }] }, { header: 'Drink', question: 'Which drink do you like?', options: [{ label: 'Tea', description: 'Hot' }, { label: 'Coffee', description: 'Coffee' }] }];
+    const p3 = panelOf({ lines: ['←  ☒ Pet  ☐ Drink  ✔ Submit  →', 'Which drink do you like?'], multi: false, options: [opt(1, 'Tea'), opt(2, 'Coffee')] }, { id: 't5', name: 'AskUserQuestion', ask: two });
+    assert.deepEqual([p3.title, p3.step, p3.options[0].description, p3.options[1].description], ['Drink', '2/2', 'Hot', undefined], 'two questions: the one on screen, counted; a description that repeats its label is dropped');
+    assert.equal(panelOf({ lines: ['Review your answers', '● Which pet do you like?', '→ Cat', '● Which drink do you like?', '→ Tea', 'Ready to submit your answers?'], multi: false, options: [opt(1, 'Submit answers'), opt(2, 'Cancel')] }, { id: 't5', name: 'AskUserQuestion', ask: two }).kind, 'menu', 'the review step after them, which repeats the questions, is a plain menu');
+    const multi = { lines: ['Which fruit?'], multi: true, options: [opt(1, '[ ] Apple'), opt(2, '[ ] Type something', true)] };
+    assert.deepEqual([panelOf(multi, { id: 't6', name: 'AskUserQuestion', ask: [{ question: 'Which fruit?', multiSelect: true, options: [] }] }).kind, panelOf(multi, null).kind], ['terminal', 'terminal'], 'a multi-select question is left to the terminal');
+    const trust = panelOf({ lines: ['Do you trust the files in this folder?'], multi: false, options: [opt(1, 'No, exit'), opt(2, 'Yes, I trust this folder')] }, null);
+    assert.deepEqual([trust.kind, trust.options.map(o => o.label)], ['menu', ['No, exit', 'Yes, I trust this folder']], 'the trust dialog, with no pending tool, is a plain menu');
+    assert.equal(panelOf(null, null).kind, 'terminal', "a menu that couldn't be read sends you to the terminal");
+    assert.ok(!/var\(--(accent|bad)/.test(fs.readFileSync(new URL('./public/composer.css', import.meta.url), 'utf8')), 'the composer never uses the pink accent, and Stop stays neutral');
+  }
   console.log('All checks passed');
 } finally {
   desk.close();

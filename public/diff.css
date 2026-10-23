@@ -1,1 +1,95 @@
 /* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE. */
+/* The right diff panel (T3's DiffPanel, RightPanelTabs, StyledDiffCodeView, diffRendering) and the thread details card.
+   Line tints mix the page colour with the theme's terminal green and red (--ok, --bad); paths use --ring for modified. */
+.diff-panel { --code-bg: var(--bg); --add: var(--ok); --del: var(--bad);
+  position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; background: var(--bg); border-left: 1px solid var(--hair); }
+.diff-panel[hidden] { display: none; }
+.diff-panel:focus { outline: none; }
+
+/* Open beside the chat from 981px: a third grid column, and the title controls move left of it. */
+@media (min-width: 981px) {
+  .app:has(> .diff-panel:not([hidden])) { grid-template-columns: var(--side-w) minmax(0, 1fr) var(--diff-w, 540px); }
+  .app.no-side:has(> .diff-panel:not([hidden])) { grid-template-columns: minmax(0, 1fr) var(--diff-w, 540px); }
+  .app:has(> .diff-panel:not([hidden])) .title-controls { right: calc(var(--diff-w, 540px) + 12px); }
+}
+/* Narrower, it's a sheet over the chat. */
+@media (max-width: 980px) {
+  .diff-panel { position: fixed; z-index: 30; top: 0; right: 0; bottom: 0; width: clamp(min(320px, 100vw), 42vw, 28rem); box-shadow: var(--shadow-pop); }
+  .diff-resize { display: none; }
+}
+
+/* An 8px grab strip on the left edge; its 1px line shows on hover, blue while dragging. */
+.diff-resize { position: absolute; z-index: 6; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none; }
+.diff-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transition: background .15s; }
+.diff-resize:hover::after { background: var(--hair-strong); }
+.diff-resize:active::after, .diff-resize:focus-visible::after { background: color-mix(in srgb, var(--ring) 60%, transparent); }
+.diff-resize:focus-visible { outline: none; }
+
+/* Tab strip, 52px (T3 RightPanelTabs). One tab: Diff. */
+.diff-tabs { flex-shrink: 0; height: var(--bar-h, 52px); display: flex; align-items: center; gap: 4px; padding: 0 12px; -webkit-app-region: drag; }
+.diff-tab { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 8px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--text); background: var(--soft); -webkit-app-region: no-drag; }
+.diff-tab .icon { color: var(--dim); }
+.diff-tab-x { display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--dim); opacity: 0; transition: opacity .15s, background .15s; }
+.diff-tab:hover .diff-tab-x, .diff-tab-x:focus-visible { opacity: 1; }
+.diff-tab-x:hover { background: var(--soft); color: var(--text); }
+
+/* Header, 40px (T3 DiffPanelShell). */
+.diff-bar { flex-shrink: 0; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); }
+.diff-scope { font-size: 12px; font-weight: 500; }
+.diff-total { display: inline-flex; gap: 6px; margin-right: 6px; font: 500 var(--text-2xs, 11px) var(--mono); }
+.diff-bar .icon-btn[aria-pressed="true"] { color: var(--text); background: var(--soft); }
+
+.diff-body { flex: 1; min-height: 0; overflow: auto; background: var(--code-bg); }
+.diff-empty { display: grid; place-items: center; min-height: 160px; padding: 24px; text-align: center; font-size: 12px; color: color-mix(in srgb, var(--dim) 70%, transparent); }
+.diff-body > .diff-empty:only-child { height: 100%; }
+
+/* A file: a sticky 32px header, then its lines. */
+.diff-file-head { position: sticky; top: 0; z-index: 4; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 8px; background: var(--code-bg); font-size: 12px; line-height: 1; }
+.diff-file-head:hover { box-shadow: inset 3px 0 color-mix(in srgb, var(--text) 24%, transparent); }
+.diff-fold { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--dim); }
+.diff-fold:hover { color: var(--text); background: var(--soft); }
+.diff-fold .icon { transition: rotate .15s; }
+.folded .diff-fold .icon { rotate: -90deg; }
+.diff-path { flex: 1; min-width: 0; padding: 0; border: 0; background: none; font: 500 12px/16px var(--sans, inherit); text-align: left; direction: rtl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .12s; }
+.diff-path.mod { color: var(--ring); }
+.diff-path.new { color: var(--add); }
+.diff-path.gone { color: var(--del); cursor: default; }
+.diff-path:not(:disabled):hover { color: color-mix(in srgb, var(--text) 84%, var(--ring)); }
+.diff-path:disabled { opacity: 1; }
+.diff-file-head .stat { display: inline-flex; gap: 6px; flex-shrink: 0; font: 500 11px var(--mono); font-variant-numeric: tabular-nums; }
+.diff-file-head .icon-btn { flex-shrink: 0; }
+.diff-file.folded .diff-lines { display: none; }
+
+/* Lines (T3 diffRendering): context 3% toward the text, added and removed lines toward green and red. */
+.diff-lines { overflow-x: auto; font: 12px/20px var(--mono); }
+.diff-rows { min-width: max-content; }
+.wrap .diff-rows { min-width: 0; }
+.dl { display: flex; background: color-mix(in srgb, var(--code-bg) 97%, var(--text)); }
+.dl .ln { flex-shrink: 0; width: 48px; padding: 0 10px 0 4px; text-align: right; color: color-mix(in srgb, var(--dim) 80%, transparent); user-select: none; font-variant-numeric: tabular-nums; }
+.dl .code { flex: 1; padding: 0 16px 0 8px; white-space: pre; tab-size: 2; }
+.wrap .dl .code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dl.add { background: color-mix(in srgb, var(--code-bg) 70%, var(--add)); }
+.dl.del { background: color-mix(in srgb, var(--code-bg) 70%, var(--del)); }
+.dl.add .ln { background: color-mix(in srgb, var(--code-bg) 60%, var(--add)); color: var(--text); }
+.dl.del .ln { background: color-mix(in srgb, var(--code-bg) 60%, var(--del)); color: var(--text); }
+[data-mode="light"] .dl.add { background: color-mix(in srgb, var(--code-bg) 84%, var(--add)); }
+[data-mode="light"] .dl.del { background: color-mix(in srgb, var(--code-bg) 84%, var(--del)); }
+[data-mode="light"] .dl.add .ln { background: color-mix(in srgb, var(--code-bg) 74%, var(--add)); }
+[data-mode="light"] .dl.del .ln { background: color-mix(in srgb, var(--code-bg) 74%, var(--del)); }
+.diff-gap { height: 24px; display: flex; align-items: center; padding-left: 16px; font: 11px var(--sans, inherit); color: color-mix(in srgb, var(--text) 50%, var(--code-bg)); background: color-mix(in srgb, var(--code-bg) 95%, var(--text)); }
+
+/* Thread details: T3's rounded glass card, 17.5rem wide. */
+.thread-details { position: fixed; z-index: 60; width: 17.5rem; max-height: calc(100vh - 6.5rem); overflow: auto; border-radius: 24px; padding: 2px 0;
+  background: var(--glass-strong); border: 1px solid var(--pop-line); box-shadow: var(--shadow-pop); backdrop-filter: blur(12px) saturate(1.14); animation: pop .15s var(--ease); }
+.td-section { padding: 8px 8px 10px; }
+.td-section + .td-section { border-top: 1px solid color-mix(in srgb, var(--hair) 65%, transparent); }
+.td-label { padding: 2px 8px 6px; font-size: var(--text-2xs, 11px); font-weight: 500; color: var(--dim); user-select: none; }
+.td-branch, .td-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 4px 8px; font-size: 13px; }
+.td-row { border: 0; border-radius: 12px; background: none; text-align: left; }
+.td-row:hover { background: var(--soft); }
+.td-branch .icon, .td-row .icon { color: var(--dim); }
+.td-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12px var(--mono); }
+.td-sub { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--dim); }
+.td-row .stat { margin-left: auto; }
+.td-actions { display: flex; gap: 6px; padding: 2px 8px 6px; }
+.td-note { margin: 0; padding: 0 8px 4px; font-size: 12px; color: var(--dim); }

@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- Relay app icon, drawn on Apple's 1024 grid: an 824px tile centred on a transparent canvas.
      #small (32 point icons) and #tiny (16 pixels) use the heavier mark, drawn larger, so the orbit survives.
-     #touch is the full-bleed square for the website's apple-touch-icon, which iOS rounds itself. -->
+     #touch is the full-bleed square for the website's apple-touch-icon, which iOS rounds itself.
+     ?debug draws Relay Debug's icon: the black mark on an amber tile, so the two apps differ at a glance. -->
 <meta charset="utf-8">
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
@@ -11,6 +12,7 @@
 <script type="module">
 const size = location.hash.slice(1) || 'full';
 const full = size === 'full';
+const debug = new URLSearchParams(location.search).has('debug');
 
 // Rounded rectangle with Apple-style continuous corners (Figma's corner smoothing, 60%).
 function squircle(x, y, w, h, r, smoothing = 0.6) {
@@ -44,8 +46,8 @@ document.getElementById('icon').innerHTML = `
   </filter>
 </defs>
 
-<!-- Flat colours only: an ink tile and the white mark. -->
-<g filter="${touch ? '' : 'url(#shadow)'}"><path d="${tile}" fill="#0f0e14"/></g>
-<image href="${mark}" x="${at}" y="${at}" width="${box}" height="${box}" style="filter: invert(1)"/>
+<!-- Flat colours only: an ink tile and the white mark (amber and black for Relay Debug). -->
+<g filter="${touch ? '' : 'url(#shadow)'}"><path d="${tile}" fill="${debug ? '#f5a524' : '#0f0e14'}"/></g>
+<image href="${mark}" x="${at}" y="${at}" width="${box}" height="${box}" style="filter: invert(${debug ? 0 : 1})"/>
 ${full ? `<path d="${tile}" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="4"/>` : ''}`;
 </script>

@@ -8,5 +8,6 @@ shell/zsh/.zsh_history
 # rendered by npm run build:art
 build/art/out/
 build/icon.icns
+build/icon-debug.icns
 build/background.tiff
 .DS_Store

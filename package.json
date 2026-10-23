@@ -14,7 +14,7 @@
     "build:native": "mkdir -p native/build && swiftc -O -target \"$(uname -m)-apple-macos12\" native/listen.swift -o native/build/desk-listen -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker native/Info.plist",
     "build:art": "electron build/art/render.mjs",
     "dist": "npm run build:native && npm run build:art && electron-builder --mac dmg",
-    "dist:debug": "npm run build:native && npm run build:art && electron-builder --mac dmg -c.appId=com.aahan.relay.debug -c.productName='Relay Debug' -c.extraMetadata.productName='Relay Debug' -c.dmg.title='Relay Debug' -c.artifactName='Relay-Debug-${version}-${arch}.${ext}'"
+    "dist:debug": "npm run build:native && npm run build:art && electron-builder --mac dmg -c.appId=com.aahan.relay.debug -c.productName='Relay Debug' -c.mac.icon=build/icon-debug.icns -c.dmg.icon=build/icon-debug.icns -c.extraMetadata.productName='Relay Debug' -c.dmg.title='Relay Debug' -c.artifactName='Relay-Debug-${version}-${arch}.${ext}'"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",

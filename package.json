@@ -40,6 +40,7 @@
       "lib/**",
       "public/**",
       "shell/**",
+      "NOTICE",
       "!node_modules/monaco-editor/{esm,dev}/**",
       "!node_modules/node-pty/{deps,src,third_party,prebuilds/win32-*}/**",
       "!**/*.map"

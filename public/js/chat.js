@@ -3,10 +3,10 @@
 // The server sends only what's new ({ sid, size, reset, prompting, menu, items }); the page only appends.
 // Runs of tool calls fold into one work-log line (worklog.js), as in T3 Code; the composer floats over the list's foot.
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
-import { api, copy, h, icon, markdown, on } from './ui.js';
+import { api, copy, h, icon, markdown, on, state, actions, toast } from './ui.js';
 import { loadMonaco } from './monaco.js';
 import { composer } from './composer.js';
-import { elapsed, summarize } from './worklog.js';
+import { elapsed, summarize, startsAgent, startedId } from './worklog.js';
 
 const MAX_ROWS = 400;
 const LANGS = { js: 'javascript', ts: 'typescript', sh: 'shell', bash: 'shell', zsh: 'shell', py: 'python' };
@@ -18,7 +18,13 @@ const clock = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute:
 // T3's work-log row: the tool's icon, its label, a chevron at the far right.
 const TOOL_ICONS = { Read: 'eye', Edit: 'squarePen', MultiEdit: 'squarePen', Write: 'squarePen', NotebookEdit: 'squarePen', Bash: 'terminal',
   Grep: 'search', Glob: 'search', WebFetch: 'globe', WebSearch: 'globe', Task: 'bot', Agent: 'bot' };
-const toolIcon = entry => (entry.kind === 'thinking' ? 'sparkles' : TOOL_ICONS[entry.name] ?? 'zap');
+const toolIcon = entry => (entry.kind === 'thinking' ? 'sparkles' : TOOL_ICONS[entry.name] ?? (startsAgent(entry.name) ? 'bot' : 'zap'));
+// The thread a started session runs in, looked up on click: by then the chat list knows it, even if the worker closed its pane.
+const openStarted = id => {
+  const chat = state.chats.find(c => c.sessionId === id || c.autoClosed === id) ?? state.chats.find(c => c.id === state.sessions.find(s => s.id === id)?.chatId);
+  if (chat) actions.openChat(chat.id);
+  else toast('That thread is no longer on the list', 'error');
+};
 const summary = (entry, ...rest) => h('summary', {}, h('span', { class: 'chat-tool-icon' }, icon(toolIcon(entry), 16)), ...rest,
   h('span', { class: 'chat-chevron' }, icon('chevronRight', 12)));
 const copyButton = (text, title = 'Copy') => h('button', { class: 'icon-btn chat-copy', title, 'aria-label': title, onClick: () => copy(text()) }, icon('copy', 12));
@@ -198,6 +204,13 @@ export function chatView(p) {
     if (it.kind === 'thinking') {
       group.body.append(h('details', { class: 'chat-fold' }, summary(entry, h('span', { class: 'chat-label' }, 'Thought')),
         h('div', { class: 'chat-thought' }, it.text)));
+    } else if (startsAgent(it.name)) { // T3's subagent row: a link to the thread it started, live once the result names it
+      const mark = h('span', { class: 'chat-mark' });
+      const link = h('button', { class: 'chat-sub', 'data-tool': it.id, disabled: true, title: 'Starting…' },
+        h('span', { class: 'chat-tool-icon' }, icon('bot', 16)), h('span', { class: 'chat-label' }, label(entry.label)), mark,
+        h('span', { class: 'chat-chevron' }, icon('chevronRight', 12)));
+      tools.set(it.id, { mark, body: h('div'), entry, group, link });
+      group.body.append(link);
     } else {
       const mark = h('span', { class: 'chat-mark' });
       const body = h('div', { class: 'chat-tool-body' }, it.detail && h('pre', {}, it.detail));
@@ -280,6 +293,9 @@ export function chatView(p) {
       t.entry.error = it.error;
       refresh(t.group);
     }
+    const started = t.link && !it.error && startedId(it.text);
+    if (started) Object.assign(t.link, { disabled: false, title: 'Open the thread it started', onclick: () => openStarted(started) });
+    else if (t.link) t.link.title = it.text || 'It did not start';
     if (t.ask && it.answers) {
       for (const { q, options, answer } of t.ask) {
         const picked = it.answers[q.question];

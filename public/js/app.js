@@ -227,7 +227,7 @@ const since = t => {
 
 let query = ''; // the search box, lower-cased
 const SHELVES = 'agent-desk:sidebar-shelves';
-const shelves = (() => { try { return { settled: true, agents: false, ...JSON.parse(localStorage.getItem(SHELVES)) }; } catch { return { settled: true, agents: false }; } })();
+const shelves = (() => { try { return { settled: true, orphans: true, ...JSON.parse(localStorage.getItem(SHELVES)) }; } catch { return { settled: true, orphans: true }; } })();
 const toggleShelf = key => {
   shelves[key] = !shelves[key];
   try { localStorage.setItem(SHELVES, JSON.stringify(shelves)); } catch {}
@@ -237,10 +237,22 @@ const SETTLED_FIRST = 10, SETTLED_PAGE = 25; // T3's settled tail: 10, then 25 m
 let settledShown = SETTLED_FIRST;
 let section = 'general'; // the settings section the nav marks
 
-// Chats an agent started and you haven't typed in: they stay on their own folded shelf.
+// Chats an agent started and you haven't typed in: they nest under their starter's card, as T3 nests a subagent.
 const chatOf = s => state.chats.find(c => c.id === s.chatId);
 const agentChat = c => Boolean(c?.startedBy && !c.talked);
 const byAgent = s => agentChat(chatOf(s));
+// The open thread a starter's session id stands for: that session, or the one its chat runs in now (reopened, or a
+// worker that closed its pane and kept its old id in autoClosed).
+const starterIn = open => id => open.find(s => s.id === id)
+  ?? (chatId => chatId && open.find(s => s.chatId === chatId))(state.sessions.find(s => s.id === id)?.chatId ?? state.chats.find(c => c.autoClosed === id)?.id);
+// Cards whose children are folded away, by chat id. Unfolded is the default.
+const FOLDED = 'agent-desk:sidebar-folded';
+const folded = new Set((() => { try { return JSON.parse(localStorage.getItem(FOLDED)) ?? []; } catch { return []; } })());
+const toggleKids = key => {
+  if (!folded.delete(key)) folded.add(key);
+  try { localStorage.setItem(FOLDED, JSON.stringify([...folded])); } catch {}
+  renderSide();
+};
 
 let sidebarDrag = false; // rebuilding the list mid-drag would detach the dragged row and lose its dragend
 const drag = (type, id) => e => {
@@ -293,6 +305,34 @@ function slimChat(c) {
     onClick: () => !c.folderMissing && actions.openChat(c.id), onContextmenu: e => chatMenu(e, c),
   }, monogram(projectName(c.project)), h('span', { class: 'thread-title' }, c.title), h('span', { class: 'thread-when' }, since(c.lastActiveAt)));
 }
+// A thread an agent started, under its starter: a status dot and the title (T3's subagent row). Finished ones stay, dimmed.
+function kidRow({ s, c }) {
+  const status = s ? actions.statusOf?.(s) ?? s.status : 'exited';
+  const title = s ? chatTitle(s) : c.title;
+  const current = s && actions.focusedSession?.() === s.id;
+  const gone = c?.folderMissing;
+  return h('button', {
+    class: `thread slim kid${s ? '' : ' settled'}${current ? ' current' : ''}${gone ? ' gone' : ''}`, 'data-key': s ? `s:${s.id}` : `c:${c.id}`, 'aria-current': current ? 'true' : null,
+    'aria-label': `${title}, ${s ? STATUS_LABEL[status] ?? status : 'finished'}`, title: gone ? `Its folder is gone: ${c.cwd}` : s ? s.cwd : `${title}\nClick to pick this thread up again`,
+    draggable: !gone, onDragstart: s ? drag(DRAG.pane, s.id) : drag(DRAG.chat, c.id),
+    onClick: () => (s ? openSession(s) : !gone && actions.openChat(c.id)), onContextmenu: e => chatMenu(e, s ? chatOf(s) : c),
+  }, h('span', { class: `dot ${status}`, 'aria-hidden': 'true' }), h('span', { class: 'thread-title' }, title), !s && h('span', { class: 'thread-when' }, since(c.lastActiveAt)));
+}
+// A row and, under it, the threads its agent started (theirs too), with a toggle on the row that shows how many.
+function withKids(s, row, kids) {
+  const list = kids(s);
+  if (!list.length) return row;
+  const key = s.chatId ?? s.id;
+  const open = !folded.has(key);
+  return h('div', { class: 'thread-group' }, row,
+    h('button', {
+      class: 'thread-kids-toggle', 'data-key': `kids:${key}`, 'aria-expanded': String(open), 'aria-controls': `kids-${key}`,
+      'aria-label': `${list.length} ${list.length === 1 ? 'thread' : 'threads'} started by ${chatTitle(s)}`, title: open ? 'Hide the threads it started' : 'Show the threads it started',
+      onClick: () => toggleKids(key),
+    }, icon('bot', 12), String(list.length), icon('chevronDown', 12)),
+    open && h('div', { class: 'thread-kids', id: `kids-${key}`, role: 'group', 'aria-label': `Started by ${chatTitle(s)}` }, list));
+}
+
 // T3's CollapsibleSectionHeader: a label, a hairline, a chevron.
 const shelf = (key, label, count) => h('button', { class: 'shelf', 'data-key': `shelf:${key}`, 'aria-expanded': String(shelves[key]), onClick: () => toggleShelf(key) },
   h('span', {}, shelves[key] ? label : `${label} (${count})`), h('span', { class: 'shelf-rule', 'aria-hidden': 'true' }), icon('chevronDown', 12));
@@ -307,8 +347,23 @@ function threadList() {
     const hits = [...open.filter(s => chatTitle(s).toLowerCase().includes(query)).map(slimSession), ...closed.filter(c => c.title?.toLowerCase().includes(query)).map(slimChat)];
     return hits.length ? hits : [h('p', { class: 'side-empty', role: 'status' }, 'No threads found')];
   }
-  const active = open.filter(s => !byAgent(s)).map(cardRow);
-  const agents = [...open.filter(byAgent).map(slimSession), ...closed.filter(agentChat).map(slimChat)];
+  // Each agent-started thread goes under the open thread that started it; with no such thread it's an orphan.
+  const starter = starterIn(open);
+  const children = new Map(); // parent session id -> [{ s } | { c }]
+  const orphans = [];
+  for (const x of [...open.filter(byAgent).map(s => ({ s })), ...closed.filter(agentChat).map(c => ({ c }))]) {
+    const p = starter((x.s ? chatOf(x.s) : x.c).startedBy.id);
+    if (p && p !== x.s) children.set(p.id, [...(children.get(p.id) ?? []), x]);
+    else orphans.push(x);
+  }
+  const seen = new Set(); // a loop of starters can't recurse for ever
+  const kids = s => {
+    if (seen.has(s.id)) return [];
+    seen.add(s.id);
+    return (children.get(s.id) ?? []).map(x => (x.s ? withKids(x.s, kidRow(x), kids) : kidRow(x)));
+  };
+  const active = open.filter(s => !byAgent(s)).map(s => withKids(s, cardRow(s), kids));
+  const agents = orphans.map(x => (x.s ? withKids(x.s, slimSession(x.s), kids) : slimChat(x.c)));
   const settled = closed.filter(c => !agentChat(c));
   if (!active.length && !agents.length && !settled.length) {
     return [h('div', { class: 'side-empty' }, state.projects.length ? (scoped() ? `No threads in ${projectName(scoped())} yet` : 'No threads yet') : [
@@ -320,7 +375,7 @@ function threadList() {
   return [
     ...active,
     h('div', { class: 'shelves' },
-      agents.length > 0 && [shelf('agents', 'Started by agents', agents.length), shelves.agents && agents],
+      agents.length > 0 && [shelf('orphans', 'Started by agents', agents.length), shelves.orphans && agents],
       settled.length > 0 && [shelf('settled', 'Settled', settled.length), shelves.settled && [
         settled.slice(0, settledShown).map(slimChat),
         hidden > 0 && h('button', { class: 'thread slim more', 'data-key': 'more', onClick: () => { settledShown += SETTLED_PAGE; renderSide(); } },

@@ -886,7 +886,7 @@ Ready to submit your answers?
   assert.match(scoutRan, /- Christie: Learning coach.*- Browner: Frontend.*- Scout \(you\)/, 'and knows who else is on the team');
   assert.match(scoutRan, /change one with update_specialist/, 'and that it can change a profile when asked');
   assert.match(scoutRan, /- Vera: Reviewer: after a change.*opus, high effort, read-only\./, 'with when to pick each, and who is read-only');
-  assert.match(scoutRan, /--disallowedTools Edit,Write,MultiEdit,NotebookEdit/, 'a read-only specialist has its editing tools turned off');
+  assert.match(scoutRan, /--disallowedTools Edit,Write,NotebookEdit /, 'a read-only specialist has its editing tools turned off');
   assert.ok(!/update_specialist/.test(scoutRan.match(/--allowedTools (\S+)/)[1]), 'which always asks you first');
   const coach = await ok('POST', '/api/sessions', { specialist: 'Christie', model: 'opus', project: repo });
   assert.equal(coach.model, 'opus', 'you can pick a model for one run');
@@ -913,7 +913,11 @@ Ready to submit your answers?
   assert.match(pOut, /--model sonnet/, 'passed to claude');
   assert.doesNotMatch(pOut, /--effort/, 'and no effort flag');
   assert.deepEqual((await runOf({ kind: 'agent', agent: 'claude', model: 'lighter' })).slice(0, 2), ['haiku', ''], 'lighter than the worker default (Sonnet) is Haiku');
-  assert.deepEqual((await runOf({ kind: 'agent', agent: 'claude', role: 'lead' })).slice(0, 2), ['opus', 'high'], 'a lead agent has its own defaults');
+  const [lm, le, leadOut] = await runOf({ kind: 'agent', agent: 'claude', role: 'lead' });
+  assert.deepEqual([lm, le], ['opus', 'high'], 'a lead agent has its own defaults');
+  const words = text => new RegExp(text.replace(/[()]/g, '\\$&').split(' ').join(' ?')); // a space at the end of a wrapped row is trimmed
+  assert.match(leadOut, words("use Relay agents (start_task, start_agent), not Claude's built-in Agent tool. If a start fails, retry once, then tell the user the exact error"),
+    "a lead is told to use Relay's agents, and to retry a failed start once and then tell you the error");
   assert.equal((await request('PATCH', '/api/settings', { body: { agentDefaults: { claude: { model: 'gpt', effort: '' }, lead: { model: '', effort: '' } } } })).status, 400, 'defaults must be known models');
   assert.equal((await request('PATCH', '/api/settings', { body: { scrollSpeed: 10 } })).status, 400, 'scroll speed has a sensible range');
   {
@@ -970,6 +974,17 @@ Ready to submit your answers?
   const started = JSON.parse((await viaTool('start_agent', { prompt: 'Review the README', specialist: 'Rhea', model: 'haiku' })).content[0].text);
   assert.deepEqual([started.specialist.name, started.model], ['Rhea', 'haiku'], 'an agent can start a specialist on a chosen model');
   await exited(started.id);
+  // One that dies on start fails the start with its exit code and last screen lines, never "working"
+  fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "error: An unknown error occurred (Unexpected)"\nexit 1\n', { mode: 0o755 });
+  const died = await viaTool('start_agent', { prompt: 'Review the README', specialist: 'Rhea' });
+  assert.ok(died.isError, 'start_agent fails for an agent that dies on start');
+  assert.match(died.content[0].text, /Rhea exited on start with code 1[^]*error: An unknown error occurred \(Unexpected\)/, 'with its exit code and screen');
+  const doomed = await replyOf('create_task', { title: 'Dies on start' });
+  const diedTask = await viaTool('start_task', { id: doomed.id, worktree: false });
+  assert.match(diedTask.isError && diedTask.content[0].text, /exited on start with code 1[^]*Unexpected/, 'start_task too');
+  assert.equal((await ok('GET', '/api/tasks')).find(t => t.id === doomed.id).status, 'todo', 'and its task goes back to To do, not to Review');
+  await ok('DELETE', `/api/tasks/${doomed.id}`);
+  fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "FAKE-CLAUDE $*"\n', { mode: 0o755 });
   const listed = JSON.parse((await viaTool('list_agents', {})).content[0].text).find(x => x.id === started.id);
   assert.deepEqual([listed.specialist, listed.model, listed.asked], ['Rhea, Code reviewer: finds bugs before you merge', 'haiku', 'Review the README'], 'agents see who the others are and what each was asked');
 

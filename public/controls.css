@@ -84,13 +84,19 @@ textarea.input { resize: vertical; min-height: 84px; padding: 8px 11px; line-hei
 .avatar.shell { background: #2a2e38; color: var(--ok); }
 .avatar.browser { background: #3b82f6; }
 
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex-shrink: 0; opacity: .7; }
-.dot.working { background: var(--ok); opacity: 1; animation: pulse 1.6s infinite; }
+.dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex-shrink: 0; opacity: .7; }
+.dot.working { background: var(--ok); opacity: 1; }
 .dot.idle { background: var(--info); opacity: 1; }
-.dot.needs-input { background: var(--warn); opacity: 1; animation: pulse-warn 1.2s infinite; }
+.dot.needs-input { background: var(--warn); opacity: 1; }
 .dot.exited { background: var(--dim); opacity: .4; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-@keyframes pulse-warn { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 60%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+/* The pulse is a copy of the dot that grows and fades. Only transform and opacity change, so the GPU runs it without
+   repainting: animating box-shadow repainted the page every frame while any agent worked. */
+.dot.working::after, .dot.needs-input::after, .graph-live.busy i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; pointer-events: none; animation: pulse 1.6s infinite; }
+.dot.needs-input::after { animation: pulse-warn 1.2s infinite; }
+.away .dot::after, .away .graph-live i::after, .away .pane.attn { animation: none; }
+.away .chat-label.live { animation-play-state: paused; }
+@keyframes pulse { 0% { transform: scale(1); opacity: .6; } 70%, 100% { transform: scale(2.5); opacity: 0; } }
+@keyframes pulse-warn { 0% { transform: scale(1); opacity: .6; } 70%, 100% { transform: scale(2.75); opacity: 0; } }
 .state { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px 0 8px; border-radius: 99px; font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; border: 1px solid var(--hair); background: var(--softer); color: var(--dim); }
 .state .dot { width: 6px; height: 6px; }
 .state.working { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 28%, transparent); background: color-mix(in srgb, var(--ok) 8%, transparent); }

@@ -33,6 +33,11 @@ const VIEWS = [
 const $ = id => document.getElementById(id);
 let current = '';
 let live = false; // is the event stream from the server connected
+// The status pulses stop while Relay isn't the focused window: nobody's watching, and each frame costs GPU (controls.css .away).
+const away = () => document.documentElement.classList.toggle('away', !document.hasFocus());
+addEventListener('blur', away);
+addEventListener('focus', away);
+away();
 
 // ---------- Live data ----------
 const loaders = {
@@ -582,12 +587,13 @@ function renderChrome() {
 
 // The thin bar along the bottom (grid layout only; T3's thread layout has none): connection, what's running, guardrails.
 const PERMISSION_NAMES = { default: 'Ask me', acceptEdits: 'Accept edits', auto: 'Auto', plan: 'Plan only' };
+let statusShown = '';
 function renderStatus() {
   const sessions = gridSessions();
   const running = sessions.filter(s => !s.exited);
   const waiting = sessions.filter(s => s.status === 'needs-input');
   const busy = running.filter(s => actions.statusOf?.(s) === 'working');
-  $('statusBar').replaceChildren(...[
+  const items = [
     h('span', {}, h('i', { class: `live-dot${live ? '' : ' off'}` }), live ? 'Live' : 'Reconnecting…'),
     h('span', {}, icon('terminal', 12), `${running.length} running`),
     busy.length > 0 && h('span', {}, icon('zap', 12), `${busy.length} ${STATUS_LABEL.working.toLowerCase()}`),
@@ -597,7 +603,11 @@ function renderStatus() {
     h('span', { title: 'What Claude agents may do without asking' }, icon('shield', 12), PERMISSION_NAMES[state.settings.permissionMode] ?? 'Ask me'),
     h('span', {}, icon('sparkles', 12), state.theme?.name ?? ''),
     h('span', {}, h('kbd', {}, '⌘K'), 'commands'),
-  ].filter(Boolean));
+  ].filter(Boolean);
+  const html = items.map(n => n.outerHTML).join('');
+  if (html === statusShown) return; // every second otherwise, repainting the bar for nothing
+  statusShown = html;
+  $('statusBar').replaceChildren(...items);
 }
 on('tick', renderChrome);
 on('project', renderChrome); // the new project lights up at once, not after the settings round trip

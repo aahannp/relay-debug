@@ -1,7 +1,7 @@
 /* Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE. */
 /* The right diff panel (T3's DiffPanel, RightPanelTabs, StyledDiffCodeView, diffRendering) and the thread details card.
-   Line tints mix the page colour with the theme's terminal green and red (--ok, --bad); paths use --ring for modified. */
-.diff-panel { --code-bg: var(--bg); --add: var(--ok); --del: var(--bad);
+   Line tints mix the page colour with T3's diff green and red on every theme; a file's chevron takes its status colour. */
+.diff-panel { --code-bg: var(--bg); --add: #00bc7d; --del: #fb2c36; --mod: var(--ring);
   position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; background: var(--bg); border-left: 1px solid var(--hair); }
 .diff-panel[hidden] { display: none; }
 .diff-panel:focus { outline: none; }
@@ -34,36 +34,56 @@
 .diff-tab-x:hover { background: var(--soft); color: var(--text); }
 
 /* Header, 40px (T3 DiffPanelShell). */
-.diff-bar { flex-shrink: 0; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 16px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); }
-.diff-scope { font-size: 12px; font-weight: 500; }
-.diff-total { display: inline-flex; gap: 6px; margin-right: 6px; font: 500 var(--text-2xs, 11px) var(--mono); }
+.diff-bar { flex-shrink: 0; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); }
+.diff-scope { padding-left: 4px; font-size: 12px; font-weight: 500; }
+.diff-total { display: inline-flex; gap: 4px; margin-right: 4px; font: 500 var(--text-2xs, 11px) var(--mono); }
 .diff-bar .icon-btn[aria-pressed="true"] { color: var(--text); background: var(--soft); }
+.diff-bar [hidden] { display: none; }
+/* Stacked / Split: a small segmented pair of 14px icons. */
+.diff-layout { flex-wrap: nowrap; flex-shrink: 0; }
+.diff-layout button { display: inline-grid; place-items: center; width: 26px; height: 22px; padding: 0; }
+.diff-layout button[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .3), inset 0 0 0 1px var(--hair); }
+.diff-layout button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
-.diff-body { flex: 1; min-height: 0; overflow: auto; background: var(--code-bg); }
+/* The diff and, beside it on the right, the file tree. */
+.diff-main { flex: 1; min-height: 0; display: flex; }
+
+.diff-body { flex: 1; min-width: 0; min-height: 0; overflow: auto; background: var(--code-bg); }
 .diff-empty { display: grid; place-items: center; min-height: 160px; padding: 24px; text-align: center; font-size: 12px; color: color-mix(in srgb, var(--dim) 70%, transparent); }
 .diff-body > .diff-empty:only-child { height: 100%; }
+.diff-cut { margin: 0; padding: 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 70%, transparent); font-size: var(--text-2xs, 11px); color: var(--dim); background: color-mix(in srgb, var(--soft) 40%, transparent); }
 
 /* A file: a sticky 32px header, then its lines. */
-.diff-file-head { position: sticky; top: 0; z-index: 4; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 8px; background: var(--code-bg); font-size: 12px; line-height: 1; }
+.diff-file-head { position: sticky; top: 0; z-index: 4; height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 8px; background: var(--code-bg); font-size: 12px; line-height: 1; cursor: pointer; }
 .diff-file-head:hover { box-shadow: inset 3px 0 color-mix(in srgb, var(--text) 24%, transparent); }
-.diff-fold { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--dim); }
-.diff-fold:hover { color: var(--text); background: var(--soft); }
-.diff-fold .icon { transition: rotate .15s; }
-.folded .diff-fold .icon { rotate: -90deg; }
-.diff-path { flex: 1; min-width: 0; padding: 0; border: 0; background: none; font: 500 12px/16px var(--sans, inherit); text-align: left; direction: rtl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .12s; }
-.diff-path.mod { color: var(--ring); }
-.diff-path.new { color: var(--add); }
-.diff-path.gone { color: var(--del); cursor: default; }
+.diff-fold { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: -2px; padding: 0; border: 0; border-radius: 4px; background: none; color: color-mix(in srgb, var(--dim) 80%, transparent); }
+.diff-fold:hover { background: var(--soft); }
+.diff-fold.mod, .dt-file.mod { color: var(--mod); }
+.diff-fold.new, .dt-file.new { color: var(--add); }
+.diff-fold.gone, .dt-file.gone { color: var(--del); }
+.diff-path { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text); font: 500 12px/16px var(--sans, inherit); text-align: left; direction: rtl; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .12s; }
+.diff-path:disabled { cursor: default; }
 .diff-path:not(:disabled):hover { color: color-mix(in srgb, var(--text) 84%, var(--ring)); }
 .diff-path:disabled { opacity: 1; }
-.diff-file-head .stat { display: inline-flex; gap: 6px; flex-shrink: 0; font: 500 11px var(--mono); font-variant-numeric: tabular-nums; }
+.diff-file-head .stat { display: inline-flex; gap: 4px; flex-shrink: 0; font: 500 11px var(--mono); font-variant-numeric: tabular-nums; }
 .diff-file-head .icon-btn { flex-shrink: 0; }
+.diff-copy.done { color: var(--add); }
 .diff-file.folded .diff-lines { display: none; }
+.diff-lines { animation: diff-in .2s ease-out; }
+@keyframes diff-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .diff-lines { animation: none; } }
 
 /* Lines (T3 diffRendering): context 3% toward the text, added and removed lines toward green and red. */
 .diff-lines { overflow-x: auto; font: 12px/20px var(--mono); }
 .diff-rows { min-width: max-content; }
 .wrap .diff-rows { min-width: 0; }
+/* Split: one two-column grid per file, old on the left, new on the right. Two 1fr columns under min-width: max-content are
+   each at least as wide as the file's longest line, so the halves stay equal and scroll together. */
+.diff-rows.split { display: grid; grid-template-columns: 1fr 1fr; }
+.wrap .diff-rows.split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.diff-rows.split > .diff-gap { grid-column: 1 / -1; }
+.diff-rows.split > .dl:nth-child(odd of .dl) { border-right: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); }
+.dl.blank { background: color-mix(in srgb, var(--code-bg) 94%, var(--text)); }
 .dl { display: flex; background: color-mix(in srgb, var(--code-bg) 97%, var(--text)); }
 .dl .ln { flex-shrink: 0; width: 48px; padding: 0 10px 0 4px; text-align: right; color: color-mix(in srgb, var(--dim) 80%, transparent); user-select: none; font-variant-numeric: tabular-nums; }
 .dl .code { flex: 1; padding: 0 16px 0 8px; white-space: pre; tab-size: 2; }
@@ -76,13 +96,30 @@
 [data-mode="light"] .dl.del { background: color-mix(in srgb, var(--code-bg) 84%, var(--del)); }
 [data-mode="light"] .dl.add .ln { background: color-mix(in srgb, var(--code-bg) 74%, var(--add)); }
 [data-mode="light"] .dl.del .ln { background: color-mix(in srgb, var(--code-bg) 74%, var(--del)); }
-/* The T3 themes tint with T3's own diff colours (--success emerald-500, --error red-500; a touch lighter in dark), not the terminal's. */
-[data-theme="t3dark"] .diff-panel { --add: #00bc7d; --del: color-mix(in srgb, #fb2c36 90%, #fff); }
-[data-theme="t3light"] .diff-panel { --add: #00bc7d; --del: #fb2c36; }
+/* T3's red is a touch lighter in dark mode; t3light tints its lines more strongly. */
+[data-mode="dark"] .diff-panel { --del: color-mix(in srgb, #fb2c36 90%, #fff); }
 [data-theme="t3light"] .dl.add { background: color-mix(in srgb, var(--code-bg) 50%, var(--add)); }
 [data-theme="t3light"] .dl.del { background: color-mix(in srgb, var(--code-bg) 50%, var(--del)); }
 [data-theme="t3light"] .dl.add .ln { background: color-mix(in srgb, var(--code-bg) 35%, var(--add)); }
 [data-theme="t3light"] .dl.del .ln { background: color-mix(in srgb, var(--code-bg) 35%, var(--del)); }
+/* The file tree (T3 DiffFileTree): min(16rem, 40%) wide, a 40px "Files" header, compact rows indented 12px a level. */
+.diff-tree { display: flex; flex-direction: column; width: min(16rem, 40%); min-width: 160px; flex-shrink: 0; border-left: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); background: var(--bg); }
+.diff-tree[hidden] { display: none; }
+.dt-head { flex-shrink: 0; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid color-mix(in srgb, var(--hair) 60%, transparent); font-size: 12px; color: var(--dim); }
+.dt-title { padding: 0 4px; font-weight: 500; color: var(--text); }
+.dt-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.dt-body { flex: 1; min-height: 0; overflow: auto; padding: 4px; }
+.dt-row { display: flex; align-items: center; gap: 4px; width: 100%; height: 24px; padding: 0 6px 0 calc(6px + var(--depth, 0) * 12px); border: 0; border-radius: 6px; background: none; font-size: 12px; text-align: left; color: var(--text); cursor: pointer; list-style: none; }
+.dt-row::-webkit-details-marker { display: none; }
+.dt-row:hover { background: var(--soft); }
+.dt-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.dt-row .icon { flex-shrink: 0; color: var(--dim); transition: rotate .15s; }
+.dt-dir[open] > summary .icon { rotate: 90deg; }
+.dt-file { padding-left: calc(22px + var(--depth, 0) * 12px); }
+.dt-file[aria-current="true"] { background: var(--soft); }
+.dt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-dir > summary .dt-name { color: var(--dim); }
+
 .diff-gap { height: 24px; display: flex; align-items: center; padding-left: 16px; font: 11px var(--sans, inherit); color: color-mix(in srgb, var(--text) 50%, var(--code-bg)); background: color-mix(in srgb, var(--code-bg) 95%, var(--text)); }
 
 /* Thread details: T3's rounded glass card, 17.5rem wide. */

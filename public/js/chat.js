@@ -6,7 +6,7 @@
 import { api, copy, h, icon, markdown, on, state, actions, toast } from './ui.js';
 import { loadMonaco } from './monaco.js';
 import { composer } from './composer.js';
-import { elapsed, summarize, startsAgent, startedId } from './worklog.js';
+import { bucket, elapsed, summarize, startsAgent, startedId } from './worklog.js';
 
 const MAX_ROWS = 400;
 const LANGS = { js: 'javascript', ts: 'typescript', sh: 'shell', bash: 'shell', zsh: 'shell', py: 'python' };
@@ -14,11 +14,19 @@ const LANGS = { js: 'javascript', ts: 'typescript', sh: 'shell', bash: 'shell', 
 const label = text => text.split('`').map((t, i) => (i % 2 ? h('code', {}, t) : t));
 // "[Message from leader (agent 15fd8a11)]\n…" (sessions.mjs sign()): who sent it goes above the bubble, not in it.
 const SIGNED = /^\[(Message|Report|Question|Answer) from ([^\]\n]+)\]\n?/;
-const clock = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-// T3's work-log row: the tool's icon, its label, a chevron at the far right.
-const TOOL_ICONS = { Read: 'eye', Edit: 'squarePen', MultiEdit: 'squarePen', Write: 'squarePen', NotebookEdit: 'squarePen', Bash: 'terminal',
-  Grep: 'search', Glob: 'search', WebFetch: 'globe', WebSearch: 'globe', Task: 'bot', Agent: 'bot' };
-const toolIcon = entry => (entry.kind === 'thinking' ? 'sparkles' : TOOL_ICONS[entry.name] ?? (startsAgent(entry.name) ? 'bot' : 'zap'));
+// T3's day-aware time: "4:12 PM" today, "yesterday at 4:12 PM", then "10/3 4:12 PM" (with the year when it isn't this one).
+function clock(t) {
+  const d = new Date(t);
+  const now = new Date();
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const days = Math.round((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
+  if (days <= 0) return time;
+  if (days === 1) return `yesterday at ${time}`;
+  return `${d.toLocaleDateString([], { month: 'numeric', day: 'numeric', ...(d.getFullYear() !== now.getFullYear() && { year: 'numeric' }) })} ${time}`;
+}
+// T3's work-log row: an icon for the kind of work, its label, a chevron at the far right. A group of mixed work gets the hammer.
+const KIND_ICONS = { read: 'eye', edit: 'squarePen', command: 'terminal', 'code-search': 'search', web: 'globe', agent: 'bot', other: 'wrench', reasoning: 'brain', mixed: 'hammer' };
+const toolIcon = entry => KIND_ICONS[entry.kind === 'thinking' ? 'reasoning' : bucket(entry.name)];
 // The thread a started session runs in, looked up on click: by then the chat list knows it, even if the worker closed its pane.
 const openStarted = id => {
   const chat = state.chats.find(c => c.sessionId === id || c.autoClosed === id) ?? state.chats.find(c => c.id === state.sessions.find(s => s.id === id)?.chatId);
@@ -29,18 +37,23 @@ const summary = (entry, ...rest) => h('summary', {}, h('span', { class: 'chat-to
   h('span', { class: 'chat-chevron' }, icon('chevronRight', 12)));
 const copyButton = (text, title = 'Copy') => h('button', { class: 'icon-btn chat-copy', title, 'aria-label': title, onClick: () => copy(text()) }, icon('copy', 12));
 
-// A long message shows its first 11rem with a fade and "Show full message" below. Measured once it's laid out, so a hidden pane is fine.
+// A long message shows its first 11rem with a fade and "Show full message" below. Measured once it's laid out, so a hidden pane is fine;
+// once it's known to be long it stays so, and the button toggles between the two.
 const tall = new ResizeObserver(entries => {
-  for (const { target } of entries) target.classList.toggle('tall', target.scrollHeight > target.clientHeight + 1);
+  for (const { target } of entries) if (target.classList.contains('clamp')) target.classList.toggle('tall', target.scrollHeight > target.clientHeight + 1);
 });
 
-// Markdown, each code block in a card with its language and a copy button.
+// Markdown, each code block in a card with its language, a wrap toggle and a copy button.
 function md(text) {
   const el = h('div', { class: 'md' }, markdown(text));
   for (const pre of el.querySelectorAll('pre')) {
     const card = h('div', { class: 'chat-code' });
+    const wrap = h('button', { type: 'button', class: 'icon-btn', title: 'Wrap lines', 'aria-label': 'Wrap lines', 'aria-pressed': 'false', onClick: () => {
+      wrap.setAttribute('aria-pressed', String(card.classList.toggle('wrap')));
+    } }, icon('textWrap', 12));
     pre.replaceWith(card);
-    card.append(h('div', { class: 'chat-code-head' }, h('span', {}, pre.dataset.lang ?? ''), copyButton(() => pre.textContent, 'Copy code')), pre);
+    card.append(h('div', { class: 'chat-code-head' }, h('span', {}, pre.dataset.lang ?? ''),
+      h('span', { class: 'chat-code-tools', role: 'toolbar', 'aria-label': 'Code block actions' }, wrap, copyButton(() => pre.textContent, 'Copy code'))), pre);
   }
   return el;
 }
@@ -109,7 +122,7 @@ export function chatView(p) {
 
   function count() {
     if (!el.isConnected && tick) { clearInterval(tick); tick = 0; } // the pane closed
-    working.textContent = since ? `Working for ${elapsed(Date.now() - since)}` : 'Working…';
+    working.textContent = since ? `Working for ${elapsed(Date.now() - since)}` : 'Working...';
   }
 
   function lock() {
@@ -164,6 +177,7 @@ export function chatView(p) {
       if (seen.has(it.key)) continue;
       seen.add(it.key);
       if (it.kind === 'result') { attach(it); continue; }
+      if (it.kind === 'turn') { group = null; fold(it); added = true; continue; }
       if (it.kind === 'tool') waiting.set(it.id, { id: it.id, name: it.name, detail: it.detail, ask: it.ask });
       // Tool calls and thinking join the open group; anything else (a question card too) ends it.
       if ((it.kind === 'tool' && !it.ask) || it.kind === 'thinking') { work(it); added = true; continue; }
@@ -199,15 +213,16 @@ export function chatView(p) {
       list.append(g.el);
       group = g;
     }
-    const entry = { kind: it.kind, name: it.name, label: it.label ?? '', done: it.kind === 'thinking', error: false };
+    const entry = { kind: it.kind, name: it.name, label: it.label ?? '', done: it.kind === 'thinking', error: false, text: h('span', { class: 'chat-label' }, label(it.label ?? '')) };
     group.entries.push(entry);
     if (it.kind === 'thinking') {
-      group.body.append(h('details', { class: 'chat-fold' }, summary(entry, h('span', { class: 'chat-label' }, 'Thought')),
+      entry.text.textContent = 'Thought';
+      group.body.append(h('details', { class: 'chat-fold' }, summary(entry, entry.text),
         h('div', { class: 'chat-thought' }, it.text)));
     } else if (startsAgent(it.name)) { // T3's subagent row: a link to the thread it started, live once the result names it
       const mark = h('span', { class: 'chat-mark' });
       const link = h('button', { class: 'chat-sub', 'data-tool': it.id, disabled: true, title: 'Starting…' },
-        h('span', { class: 'chat-tool-icon' }, icon('bot', 16)), h('span', { class: 'chat-label' }, label(entry.label)), mark,
+        h('span', { class: 'chat-tool-icon' }, icon('bot', 16)), entry.text, mark,
         h('span', { class: 'chat-chevron' }, icon('chevronRight', 12)));
       tools.set(it.id, { mark, body: h('div'), entry, group, link });
       group.body.append(link);
@@ -216,23 +231,43 @@ export function chatView(p) {
       const body = h('div', { class: 'chat-tool-body' }, it.detail && h('pre', {}, it.detail));
       tools.set(it.id, { mark, body, entry, group });
       group.body.append(h('details', { class: 'chat-fold chat-tool', 'data-tool': it.id },
-        summary(entry, h('span', { class: 'chat-label' }, label(entry.label)), mark), body));
+        summary(entry, entry.text, mark), body));
     }
     refresh(group);
   }
 
-  // While its last tool has no result and Claude works, a group reads "Running `npm test`…".
+  // While its last tool has no result and Claude works, a group reads "Running `npm test`…" with T3's shine on it.
   function refresh(g) {
     const many = g.entries.length > 1;
+    const now = g.entries.at(-1);
+    const live = status === 'working' && !now.done;
+    for (const e of g.entries) e.text.classList.toggle('live', live && e === now);
     g.el.classList.toggle('many', many);
     g.head.hidden = !many;
     g.body.hidden = many && g.head.getAttribute('aria-expanded') !== 'true';
     if (!many) return;
-    const { label: said, failed } = summarize(g.entries);
-    const now = g.entries.at(-1);
-    g.icon.replaceChildren(icon(toolIcon(now), 16));
-    g.text.replaceChildren(...(status === 'working' && !now.done ? label(`${now.label.replace(/^Ran /, 'Running ')}…`) : [said]));
+    const { label: said, failed, kind } = summarize(g.entries);
+    g.icon.replaceChildren(icon(live ? toolIcon(now) : KIND_ICONS[kind], 16));
+    g.text.replaceChildren(...(live ? label(`${now.label.replace(/^Ran /, 'Running ')}…`) : [said]));
+    g.text.classList.toggle('live', live);
     g.mark.textContent = failed ? `✗ ${failed} failed` : '';
+  }
+
+  // T3's turn fold: when a turn ends, "Worked for 44s" goes just under your message and folds away everything Claude did
+  // before its answer; a click opens it again. A turn with nothing to fold is just the line.
+  function fold(it) {
+    const rows = [];
+    for (let r = list.lastElementChild; r && !r.classList.contains('chat-user'); r = r.previousElementSibling) rows.unshift(r);
+    const answer = rows.findLast(r => r.classList.contains('chat-text'));
+    const folded = rows.filter(r => r !== answer);
+    answer?.classList.add('final');
+    for (const r of folded) r.hidden = true;
+    const btn = h('button', { type: 'button', 'aria-expanded': 'false', disabled: !folded.length, onClick: () => {
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', String(open));
+      for (const r of folded) r.hidden = !open;
+    } }, `Worked for ${elapsed(it.ms)}`, icon('chevronRight', 14));
+    list.insertBefore(h('div', { class: 'chat-turn' }, btn), rows[0] ?? null);
   }
 
   function rowOf(it) {
@@ -241,7 +276,6 @@ export function chatView(p) {
       case 'command': return h('div', { class: 'chat-note' }, h('code', {}, it.text));
       case 'note': return h('div', { class: 'chat-note' }, it.text);
       case 'text': return h('div', { class: 'chat-text' }, md(it.text), h('div', { class: 'chat-meta' }, copyButton(() => it.text)));
-      case 'turn': return h('div', { class: 'chat-turn' }, `Worked for ${elapsed(it.ms)}`);
       case 'compact': return h('details', { class: 'chat-compact' }, h('summary', {}, 'Conversation compacted'), md(it.text));
       case 'tool': { // a question; other tools go to the work log
         const body = h('div', { class: 'chat-tool-body' });
@@ -256,13 +290,18 @@ export function chatView(p) {
   function userRow(it) {
     const signed = it.text.match(SIGNED);
     const text = signed ? it.text.slice(signed[0].length) : it.text;
-    const bubble = h('div', { class: 'chat-bubble clamp' }, text,
-      it.images > 0 && h('span', { class: 'chat-images' }, ` + ${it.images} image${it.images === 1 ? '' : 's'}`));
+    const bubble = h('div', { class: 'chat-bubble clamp' }, md(text),
+      it.images > 0 && h('span', { class: 'chat-images' }, `${it.images} image${it.images === 1 ? '' : 's'}`));
     tall.observe(bubble);
+    const expand = h('button', { class: 'btn xs ghost chat-expand', 'aria-expanded': 'false', onClick: () => {
+      const open = bubble.classList.toggle('clamp') === false;
+      expand.setAttribute('aria-expanded', String(open));
+      expand.textContent = open ? 'Show less' : 'Show full message';
+    } }, 'Show full message');
     return h('div', { class: 'chat-user' },
       signed && h('div', { class: 'chat-from' }, `${signed[1] === 'Message' ? 'From' : `${signed[1]} from`} ${signed[2].replace(/\s*\((agent|ask id) [^)]*\)$/, '')}`),
       bubble,
-      h('button', { class: 'btn xs ghost chat-expand', onClick: () => { tall.unobserve(bubble); bubble.classList.remove('clamp', 'tall'); } }, 'Show full message'),
+      expand,
       h('div', { class: 'chat-meta' },
         it.at && h('time', { dateTime: new Date(it.at).toISOString(), title: new Date(it.at).toLocaleString() }, clock(it.at)),
         copyButton(() => text)));
@@ -302,9 +341,10 @@ export function chatView(p) {
         if (picked === undefined) continue;
         const labels = picked.split(', ');
         q.options.forEach((o, i) => options[i].classList.toggle('picked', labels.includes(o.label)));
-        answer.textContent = `Answered: ${picked}`;
+        answer.textContent = picked;
         answer.hidden = false;
       }
+      t.body.parentElement?.classList.add('answered');
       return;
     }
     t.body.append(h('pre', { class: it.error ? 'bad' : '' }, it.text || '(no output)'));

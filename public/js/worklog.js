@@ -26,11 +26,12 @@ const LABELS = {
 // Changes outrank looking around, and "other" comes last, as in T3.
 const PRIORITY = { command: 0, edit: 0, agent: 0, other: 2 };
 
-// tools: [{ kind: 'tool' | 'thinking', name, label, error }] -> { label, failed }.
+// tools: [{ kind: 'tool' | 'thinking', name, label, error }] -> { label, failed, kind }.
+// kind picks the group's icon as T3 does: one bucket's own, 'reasoning' for thoughts alone, 'mixed' for more than one bucket.
 // Reads and edits count distinct files: the label is "Read src/a.js", so what follows its first word is the file.
 export function summarize(tools) {
   const work = tools.filter(t => t.kind !== 'thinking');
-  if (!work.length) return { label: tools.length > 1 ? `Thought (×${tools.length})` : 'Thought', failed: 0 };
+  if (!work.length) return { label: tools.length > 1 ? `Thought (×${tools.length})` : 'Thought', failed: 0, kind: 'reasoning' };
   const groups = new Map();
   for (const t of work) {
     const b = bucket(t.name);
@@ -48,12 +49,14 @@ export function summarize(tools) {
   return {
     label: words.length < 3 ? words.join(' and ') : `${words.slice(0, -1).join(', ')}, and ${words.at(-1)}`,
     failed: work.filter(t => t.error).length,
+    kind: groups.size === 1 ? [...groups.keys()][0] : 'mixed',
   };
 }
 
-// 12000 -> '12s', 65000 -> '1m 5s', 3725000 -> '1h 2m 5s'.
+// 12000 -> '12s', 65000 -> '1m 5s', 3605000 -> '1h 0m 5s': every unit from the largest one there.
 export function elapsed(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s}s`;
-  return [[Math.floor(s / 3600), 'h'], [Math.floor(s % 3600 / 60), 'm'], [s % 60, 's']].filter(([v]) => v).map(([v, u]) => v + u).join(' ');
+  const h = Math.floor(s / 3600);
+  const m = Math.floor(s % 3600 / 60);
+  return h ? `${h}h ${m}m ${s % 60}s` : m ? `${m}m ${s % 60}s` : `${s}s`;
 }

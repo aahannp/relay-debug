@@ -983,7 +983,8 @@ function switchLayout() {
 }
 
 // The header's left side: "project / thread ⌄". The project starts a new thread there; the thread opens its menu,
-// and a double-click renames it in place.
+// on a right-click too, and a double-click renames it in place. As in T3, a click on a renamable thread waits 500ms
+// for the second click before opening the menu; Enter and Space open it at once.
 export function title() {
   if (!thread()) return null;
   const p = selected();
@@ -994,9 +995,16 @@ export function title() {
   if (!p) current = h('h2', { class: 'crumb-title' }, 'New thread');
   else {
     const label = h('h2', { class: 'crumb-title' }, paneTitle(p));
-    current = h('button', { class: 'crumb-current', 'aria-haspopup': 'menu', title: p.session?.chatId ? 'Double-click to rename' : '',
-      onClick: e => threadMenu(e.currentTarget, p),
-      onDblclick: () => p.session?.chatId && renameInline(current, p.session) }, label, icon('chevronDown', 14));
+    const renamable = Boolean(p.session?.chatId);
+    let wait = 0;
+    current = h('button', { class: 'crumb-current', 'aria-haspopup': 'menu', title: renamable ? 'Double-click to rename' : '',
+      onClick: e => {
+        clearTimeout(wait);
+        if (!renamable || !e.detail) threadMenu(current, p);
+        else if (e.detail === 1) wait = setTimeout(() => current.isConnected && threadMenu(current, p), 500);
+      },
+      onContextmenu: e => { e.preventDefault(); clearTimeout(wait); threadMenu(current, p); },
+      onDblclick: () => { clearTimeout(wait); if (renamable) renameInline(current, p.session); } }, label, icon('chevronDown', 14));
   }
   return h('nav', { class: 'thread-crumbs', 'aria-label': 'Thread breadcrumb' }, h('ol', {},
     h('li', {}, h('button', { class: 'crumb-project', title: project, 'aria-label': `New thread in ${name}`, onClick: () => actions.newChat(project) },
@@ -1042,8 +1050,8 @@ function renameInline(el, s) {
 // The top-right toggles, while the Agents view shows one thread.
 const controls = () => [
   ['squareMenu', 'Toggle thread details', e => actions.threadDetails?.(e.currentTarget)],
-  ['panelBottom', 'Toggle terminal drawer', () => actions.toggleDrawer?.()],
-  ['panelRight', 'Toggle right panel', () => actions.toggleDiff?.()],
+  ['panelBottom', 'Toggle terminal drawer (⌘J)', () => actions.toggleDrawer?.()],
+  ['panelRight', 'Toggle right panel (⌘D)', () => actions.toggleDiff?.()],
   ['layoutGrid', 'Show all threads in a grid', () => actions.setLayout('grid')],
 ].map(([name, label, onClick]) => h('button', { class: 'icon-btn', title: label, 'aria-label': label, onClick }, icon(name, 16)));
 

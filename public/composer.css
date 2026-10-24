@@ -2,7 +2,7 @@
    with the approval or question banner attached to its top. Monochrome plus --info (Send), --bad (Stop) and --warn.
    Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
    From ComposerSurface, ChatComposer, ComposerControl, ComposerBanner, ComposerPendingApprovalPanel,
-   ComposerPrimaryActions, ContextWindowMeter and index.css (--glass-*, --shadow-composer). */
+   ComposerPrimaryActions, ComposerCommandMenu, ContextWindowMeter and index.css (--glass-*, --shadow-composer). */
 :root { --glass-blur: 16px; --glass-saturation: 1.08; --composer-glass: var(--panel2); --composer-outline: rgb(255 255 255 / 5%); --shadow-composer: none; }
 [data-mode="light"] { --glass-blur: 12px; --glass-saturation: 1.14; --composer-glass: var(--panel); --composer-outline: rgb(0 0 0 / 8%);
   --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%); }
@@ -12,28 +12,38 @@
 @container (min-width: 640px) { .chat-composer { padding-inline: 48px; } } /* lines up with chat.css's lane */
 .chat-composer-lane { max-width: 46rem; margin-inline: auto; pointer-events: auto; }
 
-.chat-card { position: relative; z-index: 1; isolation: isolate; display: flex; flex-direction: column; border-radius: 24px;
+.chat-card { position: relative; z-index: 1; isolation: isolate; display: flex; flex-direction: column; border-radius: 22px;
   background: color-mix(in srgb, var(--composer-glass) 80%, transparent);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   box-shadow: var(--shadow-composer), inset 0 0 0 1px var(--composer-outline); }
 [data-mode="dark"] .chat-card { box-shadow: inset 0 0 0 1px var(--composer-outline), inset 0 1px 0 rgb(255 255 255 / 3%); }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .chat-card { background: var(--composer-glass); } }
 .chat-input { display: block; width: 100%; box-sizing: border-box; border: 0; outline: none; background: none; resize: none; color: var(--text);
-  padding: 14px 12px 0; font: inherit; font-size: 14px; line-height: 1.625; field-sizing: content; min-height: 78px; max-height: 208px;
+  padding: 14px 12px 8px; font: inherit; font-size: 14px; line-height: 1.625; field-sizing: content; min-height: 100px; max-height: 230px;
   overflow-y: auto; scrollbar-width: thin; }
-@container (min-width: 640px) { .chat-input { padding: 16px 16px 0; } }
+@container (min-width: 640px) { .chat-input { padding: 16px 16px 8px; min-height: 102px; } }
 .chat-input::placeholder { color: color-mix(in srgb, var(--dim) 75%, transparent); }
 .chat-input:disabled { cursor: not-allowed; }
 .chat-controls { display: flex; align-items: center; gap: 8px; padding: 0 12px 12px; min-width: 0; }
 @container (min-width: 640px) { .chat-controls { padding: 0 16px 16px; } }
 
-/* A footer control (T3's ComposerControl): 28px tall, 500, the secondary label colour, the hover fill. */
-.chat-control { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; margin-left: -6px; border: 0; border-radius: var(--control-radius, 8px);
-  background: none; color: color-mix(in srgb, var(--text) 72%, var(--dim)); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+/* A footer control (T3's ComposerControl): 28px tall, 14px at 500, the secondary label colour, the hover fill.
+   The model chip's icon lines up with the editor's text; a control with a menu doesn't press in. */
+.chat-control { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--control-radius, 8px);
+  background: none; color: color-mix(in srgb, var(--text) 72%, var(--dim)); font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .chat-control:hover:not(:disabled) { background: var(--soft); color: var(--text); }
-.chat-control:active:not(:disabled) { scale: .97; }
+.chat-control:active:not(:disabled, [aria-haspopup]) { scale: .97; }
 .chat-control:disabled { opacity: .64; cursor: default; }
-.chat-control .icon { color: var(--dim); margin-right: -4px; }
+.chat-control .icon { color: var(--dim); }
+.chat-control .icon:last-child { margin-left: -2px; }
+.chat-control .icon:last-child svg { stroke-width: 2.25; }
+.chat-model { margin-left: -10px; }
+.chat-model > .icon:first-child { color: inherit; }
+/* Attach: T3's ghost icon-sm button, before Send. */
+.chat-attach { flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--control-radius, 8px);
+  background: none; color: color-mix(in srgb, var(--text) 72%, var(--dim)); cursor: pointer; }
+.chat-attach:hover:not(:disabled) { background: var(--soft); color: var(--text); }
+.chat-attach:disabled { opacity: .64; cursor: default; }
 
 /* Send: a 32px round button in T3's primary blue. Stop, while Claude works and the box is empty: the same in red. */
 .chat-go { flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%;
@@ -44,8 +54,9 @@
 .chat-go.stop { background: color-mix(in srgb, var(--bad) 90%, transparent); color: #fff; }
 .chat-go.stop:hover { background: var(--bad); transform: none; }
 .chat-go[hidden] { display: none; }
-.chat-go:focus-visible, .chat-control:focus-visible, .chat-option:focus-visible, .chat-meter:focus-visible, .chat-dock-body:focus-visible {
-  outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
+.chat-go:focus-visible, .chat-dock-body:focus-visible { outline: 2px solid var(--info); outline-offset: 2px; }
+/* T3's inset ring on the footer controls and option rows. */
+:is(.chat-control, .chat-attach, .chat-meter, .chat-option):focus-visible { outline: 2px solid color-mix(in srgb, var(--info) 60%, transparent); outline-offset: -2px; }
 
 /* The context meter: T3's 20px ring with its % beside it, in a 28px ghost button. Dim; red over 90%. */
 .chat-meter { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px 0 4px; border: 0; border-radius: var(--control-radius, 8px);
@@ -110,7 +121,7 @@
 .chat-dock[hidden] { display: none; }
 /* T3's "Usage limit reached" banner (UsageLimitRecoveryBanner): the warning dock, while no question or approval is up. */
 .chat-limit { padding: 10px 12px 27px; }
-.chat-limit:has(+ .chat-dock:not([hidden])) { display: none; }
+.chat-limit:has(~ .chat-dock:not([hidden])) { display: none; }
 .chat-limit .chat-dock-main { gap: 2px; }
 .chat-limit-when { color: var(--dim); }
 .chat-dock[data-kind="approval"] { padding: 12px 12px 29px; } /* T3's "spacious" density */
@@ -119,8 +130,8 @@
 .chat-dock-head > .icon { flex: none; }
 .chat-dock[data-kind="question"] .chat-dock-head > .icon { color: var(--info); }
 .chat-dock-title { flex: none; font-weight: 500; color: var(--warn); }
-.chat-dock[data-kind="question"] .chat-dock-title { color: var(--text); }
-.chat-dock-step { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chat-dock[data-kind="question"] .chat-dock-title { color: var(--dim); }
+.chat-dock-step { margin-left: auto; font-size: 10px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .chat-dock-body { display: block; margin: 0; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; color: var(--text); }
 .chat-dock:not([data-kind="approval"]) > .chat-dock-body { padding-inline: 4px; font-size: 13px; line-height: 1.5; }
 
@@ -133,14 +144,28 @@
 .chat-dock-actions .btn.primary { background: var(--info); border-color: var(--info); }
 @container (max-width: 560px) { .chat-dock-actions { grid-column: 2 / 4; } }
 
-/* A question or menu: T3's option rows, the label at 500 and a small description; the number key on the right. */
+/* A question or menu: T3's option rows, the label 14px at 500 and a small description; the bare number key on the right.
+   The picked row takes the muted fill and a blue check. */
 .chat-dock-options { display: flex; flex-direction: column; gap: 2px; }
-.chat-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: none; color: var(--text);
-  text-align: left; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s; }
-.chat-option:hover { background: var(--soft); }
+.chat-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: none;
+  color: color-mix(in srgb, var(--text) 85%, transparent); text-align: left; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: background .15s; }
+.chat-option:hover { background: color-mix(in srgb, var(--text) 3%, transparent); }
+.chat-option.on { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
+.chat-option .icon { flex: none; color: var(--info); }
 .chat-option-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .chat-option-desc { color: var(--dim); font-size: 11px; font-weight: 400; }
-.chat-option kbd { flex: none; }
+.chat-option kbd { flex: none; width: 20px; min-width: 0; padding: 0; background: none; font-size: 10px; font-variant-numeric: tabular-nums; }
 .chat-dock-error { color: var(--text); font-size: 11.5px; font-weight: 600; }
 .chat-dock-error:empty { display: none; }
+/* The `/` and `@` menu (T3's ComposerCommandMenu): the banner's shape, untinted, up to 288px of rows; 12px label at 500
+   (at most 45% wide) and the secondary-colour description beside it. */
+.chat-menu { gap: 0; padding: 6px 6px 23px; border-color: color-mix(in srgb, var(--text) 10%, transparent);
+  background: color-mix(in srgb, var(--composer-glass) 80%, transparent); }
+.chat-menu-list { max-height: 288px; overflow-y: auto; scroll-padding-block: 6px 24px; scrollbar-width: thin; }
+.chat-menu-item { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border-radius: 8px; color: var(--text); cursor: pointer; }
+.chat-menu-item .icon { flex: none; color: var(--dim); }
+.chat-menu-item:hover, .chat-menu-item.on { background: var(--soft); }
+.chat-menu-label { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.chat-menu-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: 12px; }
+.chat-menu-empty { margin: 0; padding: 8px 14px 4px; color: var(--dim); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .chat-ring-arc, .chat-go, .chat-option, .chat-pop, .chat-pop-bar > span { transition: none !important; } }

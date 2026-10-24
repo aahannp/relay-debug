@@ -2049,6 +2049,9 @@ esac
       'the thread a start tool made, from its result');
     assert.deepEqual([W.summarize([tool('Read', 'Read a'), tool('Read', 'Read b')]).kind, W.summarize([{ kind: 'thinking' }]).kind], ['read', 'reasoning'], "the group's icon follows its kind");
     assert.deepEqual([12000, 65000, 3725000, 3605000, 120000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s', '1h 0m 5s', '2m 0s']);
+    const { triggerAt } = await import('./public/js/composer.js');
+    assert.deepEqual([triggerAt('/com', 4), triggerAt('hi /x', 5), triggerAt('see @src/a', 10)],
+      [{ kind: '/', query: 'com', start: 0, end: 4 }, null, { kind: '@', query: 'src/a', start: 4, end: 10 }], '`/` opens the menu only at the start of the box, `@` anywhere');
     assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');
   }
   // Chat v2 T3: the composer's docked panel, for the menus parseMenu reads off the screen (shapes from its fixtures)

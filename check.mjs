@@ -328,6 +328,7 @@ try {
   assert.equal(settingsOf(command({ ...base, resume: false }, '', null).args).autoCompactWindow, undefined, 'or your settings.json does');
   assert.match(hooks.PostToolUse[0].hooks[0].command, /\/api\/touched/, 'every file an agent edits is reported');
   assert.match(hooks.Stop[0].hooks[0].command, /\/api\/turn-ended/, 'and the end of each turn');
+  assert.deepEqual(settingsOf(fresh).attribution, { commit: 'Generated via Relay', pr: 'Generated via Relay' }, 'commits and PRs say Relay made them');
   process.env.CLAUDE_CODE_CHILD_SESSION = '1';
   assert.ok(!('CLAUDE_CODE_CHILD_SESSION' in command({ ...base, resume: false }, '', null).env), "an agent never inherits Claude Code's child-session flag, which turns transcript saving off");
   delete process.env.CLAUDE_CODE_CHILD_SESSION;

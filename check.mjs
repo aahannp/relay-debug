@@ -2036,7 +2036,7 @@ esac
       'thinking stays out of the line; a failure is counted');
     assert.equal(W.summarize([{ kind: 'thinking' }, { kind: 'thinking' }]).label, 'Thought (×2)');
     assert.equal(W.summarize([tool('mcp__agent-desk__start_agent', 'a'), tool('mcp__agent-desk__start_task', 'b')]).label, 'Started 2 agents', 'Relay\'s start tools count as agents');
-    assert.deepEqual([W.startedId('{\n  "id": "s1",\n  "kind": "agent"'), W.startedId('{\n  "id": "task9",\n  "title": "x",\n  "sessionId": "s2"\n}'), W.startedId('nope')], ['s1', 's2', null],
+    assert.deepEqual([W.startedId('{\n  "id": "s1",\n  "kind": "agent"'), W.startedId('{\n  "id": "task9",\n  "title": "x",\n  "sessionId": "s2"\n}'), W.startedId('nope'), W.startedId(undefined)], ['s1', 's2', null, null],
       'the thread a start tool made, from its result');
     assert.deepEqual([12000, 65000, 3725000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s']);
     assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');

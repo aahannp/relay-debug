@@ -11,7 +11,7 @@ const BUCKETS = {
 export const startsAgent = name => /^mcp__.+__(start_agent|start_task|clone_agent)$/.test(name);
 export const bucket = name => BUCKETS[name] ?? (startsAgent(name) ? 'agent' : 'other');
 // start_agent and clone_agent answer with the new session ({ "id": … }), start_task with { …task, "sessionId": … }.
-export const startedId = text => text.match(/"sessionId": "([^"]+)"/)?.[1] ?? text.match(/^\{\s*"id": "([^"]+)"/)?.[1] ?? null;
+export const startedId = (text, t = String(text ?? '')) => t.match(/"sessionId": "([^"]+)"/)?.[1] ?? t.match(/^\{\s*"id": "([^"]+)"/)?.[1] ?? null;
 
 const n = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 const LABELS = {

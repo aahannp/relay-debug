@@ -31,7 +31,7 @@ export function mount(el) {
   root = el;
   host = h('div', { class: 'drawer-terms' });
   const btn = (name, label, onClick) => h('button', { type: 'button', class: 'drawer-btn', title: label, 'aria-label': label, onClick }, icon(name, 13));
-  const tools = () => [btn('plus', 'New terminal', () => { failed.delete(thread); addShell(thread); }), btn('trash', 'Close terminal', () => closeShell(active.get(thread)))];
+  const tools = () => [btn('plus', 'New Terminal', () => { failed.delete(thread); addShell(thread); }), btn('trash', 'Close Terminal', () => closeShell(active.get(thread)))];
   cluster = h('div', { class: 'drawer-cluster' }, ...tools().flatMap((b, i) => (i ? [h('span', { class: 'drawer-sep' }), b] : [b])));
   list = h('div', { class: 'drawer-list', role: 'tablist', 'aria-label': 'Terminals', 'aria-orientation': 'vertical' });
   side = h('aside', { class: 'drawer-side' }, h('div', { class: 'drawer-side-head' }, ...tools()), list);
@@ -81,10 +81,12 @@ function render(focus = false) {
   const many = shells.length > 1;
   cluster.hidden = many;
   side.hidden = !many;
-  list.replaceChildren(...(many ? shells.map((s, i) => h('button', {
-    type: 'button', role: 'tab', class: 'drawer-tab', 'aria-selected': String(s.id === current), title: s.cwd,
-    onClick: () => { active.set(thread, s.id); render(true); },
-  }, icon('terminalSquare', 12), h('span', {}, `Terminal ${i + 1}`))) : []));
+  // T3's rows: the terminal icon turns into an X on hover (or focus) and closes that terminal; the name picks it.
+  list.replaceChildren(...(many ? shells.map((s, i) => h('div', { class: 'drawer-tab', role: 'presentation', 'aria-selected': String(s.id === current) },
+    h('button', { type: 'button', class: 'drawer-tab-close', title: `Close Terminal ${i + 1}`, 'aria-label': `Close Terminal ${i + 1}`, onClick: () => closeShell(s.id) },
+      icon('terminalSquare', 12), icon('x', 12)),
+    h('button', { type: 'button', role: 'tab', class: 'drawer-tab-name', 'aria-selected': String(s.id === current), title: s.cwd,
+      onClick: () => { active.set(thread, s.id); render(true); } }, h('span', {}, `Terminal ${i + 1}`)))) : []));
 }
 
 const addShell = guard(async chat => {
@@ -109,7 +111,7 @@ const closeShell = guard(async id => {
   if (!id) return;
   const chat = thread;
   await api('DELETE', `/api/sessions/${id}`);
-  active.delete(chat);
+  if (active.get(chat) === id) active.delete(chat); // closing another row keeps the one you're on
   if (shellsOf(chat).length <= 1) {
     opened.delete(chat);
     store(OPEN, [...opened]);

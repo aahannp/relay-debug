@@ -30,13 +30,30 @@ textarea.input { resize: vertical; min-height: 84px; padding: 8px 11px; line-hei
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .field > span { font-size: 12px; font-weight: 500; color: var(--dim); }
 .row { display: flex; gap: 10px; align-items: center; }
-/* A switch: a 30x18 track and a 14px thumb, blue when on. */
+/* A switch, after T3's: the track is a thumb-size + 2px tall and two thumbs - 2px wide, blue when on. The thumb size is
+   20px on narrow screens and 16px from 640px (a 30x18 track); the thumb is the page colour, muted while off in dark. */
 .toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
-.toggle input { appearance: none; width: 30px; height: 18px; border-radius: 99px; background: var(--hair-strong); position: relative; transition: background .2s; margin: 0; cursor: pointer; flex-shrink: 0; }
-.toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: translate .2s var(--ease), scale .15s; box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
+.toggle input { --thumb: 20px; appearance: none; width: calc(var(--thumb) * 2 - 2px); height: calc(var(--thumb) + 2px); border-radius: 99px; background: var(--hair-strong);
+  position: relative; transition: background-color .2s, box-shadow .2s; margin: 0; cursor: pointer; flex-shrink: 0; outline: none; }
+.toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(var(--thumb) - 2px); height: calc(var(--thumb) - 2px); border-radius: 50%;
+  background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / .05); transform-origin: left; transition: translate .15s, scale .1s .1s, transform-origin .15s; }
+[data-mode="dark"] .toggle input:not(:checked)::after { background: var(--dim); }
 .toggle input:checked { background: var(--ring); }
-.toggle input:checked::after { translate: 12px 0; }
+.toggle input:checked::after { translate: calc(var(--thumb) - 4px) 0; transform-origin: right; }
 .toggle input:active::after { scale: 1.1 1; }
+.toggle input:focus-visible { box-shadow: inset 0 0 0 2px var(--ring); }
+@media (min-width: 640px) { .toggle input { --thumb: 16px; } }
+/* T3's Select (size sm): a 28px button with the chosen option and a 12px chevron; settings.js opens its list with menu(). */
+.select-trigger { position: relative; display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 9rem; max-width: 100%; min-height: 28px; padding: 0 9px;
+  border: 1px solid var(--hair-strong); border-radius: var(--radius); background: var(--bg); box-shadow: var(--lift); color: var(--text); font-size: 13px; text-align: left; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, background-color .15s; }
+[data-mode="dark"] .select-trigger { background: color-mix(in srgb, var(--hair-strong) 32%, var(--bg)); }
+.select-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-trigger .icon { margin-right: -4px; opacity: .5; }
+.select-trigger:focus-visible, .select-trigger[aria-expanded="true"] { outline: none; border-color: var(--ring); box-shadow: inset 0 0 0 3px var(--ring-soft); }
+.menu.select-menu .menu-item.sel { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.menu.select-menu .menu-item:focus-visible { outline: none; background: var(--soft); }
+.menu.select-menu .menu-item > .icon:last-child { margin-left: auto; color: var(--text); }
 .segmented { display: inline-flex; background: color-mix(in srgb, var(--hair-strong) 40%, transparent); border-radius: var(--radius); padding: 2px; gap: 2px; flex-wrap: wrap; }
 .segmented button { border: 0; background: none; height: 26px; padding: 0 10px; border-radius: calc(var(--radius) - 2px); color: var(--dim); font-weight: 500; transition: background .15s, color .15s; }
 .segmented button:hover { color: var(--text); }

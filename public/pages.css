@@ -14,9 +14,18 @@
 /* Settings / General */
 .page-crumbs { min-width: 0; }
 .page-crumbs ol { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; font: 500 14px var(--sans); color: var(--dim); }
-.page-crumbs li { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-crumbs li { flex-shrink: 0; white-space: nowrap; }
+.page-crumbs li[aria-current] { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* only the page name truncates, as in T3 */
 .page-crumbs h1 { margin: 0; font: inherit; color: var(--text); }
 @media (min-width: 640px) { .page-crumbs ol { gap: 12px; } }
+
+/* Settings rows: T3's micro Undo button by a changed row's title, and a card's own description where T3 has no row for it. */
+.setting-reset { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: 6px; padding: 0; border: 0; border-radius: 4px; background: none;
+  color: var(--dim); cursor: pointer; transition: background-color .15s, color .15s; }
+.setting-reset:hover { background: var(--soft); color: var(--text); }
+.setting-reset:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.settings-text { margin: 0 0 10px; max-width: 36rem; font-size: 12px; line-height: 1.5; color: color-mix(in srgb, var(--dim) 80%, transparent); }
+.settings-block > .settings-text:only-child { margin: 0; }
 
 /* Labels inside page cards read like T3's section titles: sentence case, 70% text, not spaced capitals. */
 .spend-card > .section-label, .spend-stat .section-label, .review .section-label, .gallery > .section-label {

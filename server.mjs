@@ -222,15 +222,17 @@ route('POST', '/api/claude-session', ({ req, body }) => {
 });
 
 // Claude's status line reports its context window's size (see statusLine in lib/sessions.mjs), for lead upkeep,
-// and that a reply came in, for the pane meter.
+// that a reply came in, for the pane meter, and your plan's usage limits, for the composer.
 route('POST', '/api/context', ({ req, body }) => {
   const s = caller(req);
   if (!s) throw fail(404, 'Unknown session');
   const size = Number(body.context_window?.context_window_size);
   if (size >= 10_000 && size <= 100_000_000) s.contextWindow = size;
   S.meterSoon(s);
+  S.noteLimits(body.rate_limits);
   return {};
 });
+route('GET', '/api/limits', () => S.usageLimits());
 
 // Claude's PostToolUse hook reports each file an agent edits. The repo it's in becomes a project (you stay on yours),
 // a worktree the agent made itself is recorded for Review, and the agent's project remembers the repo.

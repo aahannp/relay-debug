@@ -1395,6 +1395,12 @@ esac
       "the meter is pushed over /api/events, against the 200K auto-compact window Agent Desk sets; this transcript's reply names no model, so it's unpriced");
     assert.deepEqual((await ok('GET', '/api/sessions')).find(x => x.id === s.id).meter, pushed.meter, 'and listed with the session, for a page that loads later');
     assert.equal((await ok('GET', '/api/sessions')).find(x => x.id === worker.id).meter, undefined, 'a pane whose status line never reported shows nothing');
+    assert.deepEqual(await ok('GET', '/api/limits'), {}, 'no usage limits before a status line brings them (an API key never does)');
+    await request('POST', '/api/context', { token: s.agentToken, body: { rate_limits: { five_hour: { used_percentage: 23.5, resets_at: 1738425600 }, seven_day: { used_percentage: 141, resets_at: 'soon' } } } });
+    assert.deepEqual(await ok('GET', '/api/limits'), { session: { used: 23.5, resetsAt: 1738425600_000 }, weekly: { used: 100 } },
+      "the status line's rate_limits are kept for the composer: % used clamped to 0–100, the reset in ms, a bad reset dropped");
+    await request('POST', '/api/context', { token: sessions.get(worker.id).agentToken, body: { context_window: {} } });
+    assert.equal((await ok('GET', '/api/limits')).session.used, 23.5, "they're the account's: a status line without them (another pane, or before its first reply) keeps them");
     fs.appendFileSync(transcript, `${line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Planning the login work' }], usage: { input_tokens: 0, cache_read_input_tokens: 150_000, cache_creation_input_tokens: 0 } } })}\n`);
     await ok('PATCH', '/api/settings', { leadUpkeep: { ...UP, windowCap: 1_000_000 } });
     assert.equal(effectiveWindow(s), 200_000, "with the cap at 1M, the 200K auto-compact window Relay sets claude still wins");

@@ -44,18 +44,59 @@
 .chat-go.stop { background: color-mix(in srgb, var(--bad) 90%, transparent); color: #fff; }
 .chat-go.stop:hover { background: var(--bad); transform: none; }
 .chat-go[hidden] { display: none; }
-.chat-go:focus-visible, .chat-control:focus-visible, .chat-option:focus-visible, .chat-ring:focus-visible, .chat-dock-body:focus-visible {
+.chat-go:focus-visible, .chat-control:focus-visible, .chat-option:focus-visible, .chat-meter:focus-visible, .chat-dock-body:focus-visible {
   outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
 
-/* The context ring: a 28px spot with a 20px ring. Dim, amber over 70%, full text colour over 90%. */
-.chat-ring { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; cursor: default; }
-.chat-ring[hidden] { display: none; }
+/* The context meter: T3's 20px ring with its % beside it, in a 28px ghost button. Dim; red over 90%. */
+.chat-meter { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 6px 0 4px; border: 0; border-radius: var(--control-radius, 8px);
+  background: none; color: color-mix(in srgb, var(--dim) 72%, transparent); font: inherit; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; cursor: default; }
+.chat-meter:hover { background: var(--soft); }
+.chat-ring { display: grid; place-items: center; width: 20px; height: 20px; }
 .chat-ring svg { width: 20px; height: 20px; transform: rotate(-90deg); }
 .chat-ring circle { fill: none; stroke-width: 3; }
-.chat-ring-track { stroke: var(--soft); }
-.chat-ring-arc { stroke: var(--dim); stroke-linecap: round; transition: stroke-dashoffset .5s ease-out, stroke .5s; }
-.chat-ring.warn .chat-ring-arc { stroke: var(--warn); }
-.chat-ring.bad .chat-ring-arc { stroke: var(--text); }
+.chat-ring-track { stroke: color-mix(in srgb, var(--dim) 24%, transparent); }
+.chat-ring-arc { stroke: color-mix(in srgb, var(--dim) 72%, transparent); stroke-linecap: round; transition: stroke-dashoffset .5s ease-out, stroke .5s; }
+.chat-meter.bad { color: var(--bad); }
+.chat-meter.bad .chat-ring-arc { stroke: var(--bad); }
+
+/* The usage-limits control: "Session 23% · resets in 2h 5m · Weekly 41%"; a narrow composer keeps only "Session 23%". */
+.chat-limits { margin-left: 0; padding: 0 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.chat-limits.bad, .chat-limits.bad .icon { color: var(--bad); }
+@container (max-width: 520px) { .chat-limits-more { display: none; } }
+
+/* T3's popover over a footer control (PopoverPopup side top, align end, tooltip style): opens on hover after 150ms,
+   or on focus. Its ::after bridges the gap to the button, so the pointer can move onto it. */
+.chat-pop-wrap { position: relative; display: inline-flex; }
+.chat-pop-wrap[hidden] { display: none; }
+.chat-pop { position: absolute; right: -8px; bottom: calc(100% + 8px); z-index: 30; display: flex; flex-direction: column; gap: 8px; width: 16rem; padding: 12px;
+  border-radius: 12px; background: var(--glass-strong); border: 1px solid var(--pop-line); box-shadow: var(--shadow-pop); backdrop-filter: blur(12px) saturate(1.14);
+  font-size: 11px; line-height: 16px; color: var(--dim); white-space: normal; text-align: left;
+  visibility: hidden; opacity: 0; transition: opacity .1s, visibility 0s .1s; }
+.chat-pop::after { content: ''; position: absolute; inset: 100% 0 -9px; }
+.chat-pop-wrap:hover .chat-pop { visibility: visible; opacity: 1; transition: opacity .1s .15s, visibility 0s .15s; }
+.chat-pop-wrap:focus-within .chat-pop { visibility: visible; opacity: 1; transition: opacity .1s; }
+.chat-limits + .chat-pop { width: 20rem; }
+.chat-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; font-weight: 500; }
+.chat-pop-head .icon + span { margin-right: auto; margin-left: -6px; }
+.chat-pop-num { font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.chat-pop-bar { height: 6px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--soft) 60%, transparent); }
+.chat-pop-bar > span { display: block; height: 100%; border-radius: inherit; background: color-mix(in srgb, var(--dim) 72%, transparent); transition: width .5s ease-out; }
+.chat-meter.bad + .chat-pop .chat-pop-bar > span { background: var(--bad); }
+.chat-pop-row { display: flex; justify-content: space-between; gap: 12px; }
+.chat-pop-row .chat-pop-num { font-weight: 500; }
+.chat-pop-note { margin-top: 4px; font-weight: 500; text-wrap: pretty; }
+.chat-pop-action { justify-content: center; width: 100%; margin-top: 4px; }
+
+/* T3's LimitWindows, compact: label and "77% left" | the bar of what's left, with the pace mark | "resets in 2h 5m". */
+.chat-limit-grid { display: grid; grid-template-columns: minmax(0, 9rem) minmax(3rem, 1fr) auto; align-items: center; gap: 2px 12px; font-size: 12px; }
+.chat-limit-label { display: flex; gap: 8px; min-width: 0; }
+.chat-limit-label b { margin-left: auto; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+.chat-limit-bar { position: relative; height: 24px; }
+.chat-limit-bar::before, .chat-limit-fill { content: ''; position: absolute; inset: 6px auto 6px 0; border-radius: 99px; }
+.chat-limit-bar::before { right: 0; background: var(--soft); }
+.chat-limit-fill { background: var(--info); }
+.chat-limit-pace { position: absolute; inset-block: 4px; width: 2px; translate: -50%; border-radius: 99px; background: var(--text); }
+.chat-limit-reset { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* The banner attached on top of the card, inset 22px each side: the glass tinted 8% warning, outlined at 28%.
    Like T3 it runs 17px down behind the card, its last 16px masked out, so its sides meet the card's curve with no notch. */
@@ -67,6 +108,11 @@
 .chat-dock[data-kind="question"] { border-color: color-mix(in srgb, var(--info) 28%, transparent);
   background: linear-gradient(color-mix(in srgb, var(--info) 8%, transparent), color-mix(in srgb, var(--info) 8%, transparent)), color-mix(in srgb, var(--composer-glass) 80%, transparent); }
 .chat-dock[hidden] { display: none; }
+/* T3's "Usage limit reached" banner (UsageLimitRecoveryBanner): the warning dock, while no question or approval is up. */
+.chat-limit { padding: 10px 12px 27px; }
+.chat-limit:has(+ .chat-dock:not([hidden])) { display: none; }
+.chat-limit .chat-dock-main { gap: 2px; }
+.chat-limit-when { color: var(--dim); }
 .chat-dock[data-kind="approval"] { padding: 12px 12px 29px; } /* T3's "spacious" density */
 .chat-dock.busy :is(.chat-dock-options, .chat-dock-actions) { opacity: .5; pointer-events: none; }
 .chat-dock-head { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--dim); font-size: 11px; }
@@ -97,4 +143,4 @@
 .chat-option kbd { flex: none; }
 .chat-dock-error { color: var(--text); font-size: 11.5px; font-weight: 600; }
 .chat-dock-error:empty { display: none; }
-@media (prefers-reduced-motion: reduce) { .chat-ring-arc, .chat-go, .chat-option { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .chat-ring-arc, .chat-go, .chat-option, .chat-pop, .chat-pop-bar > span { transition: none !important; } }

@@ -17,18 +17,21 @@
 /* Offcanvas: the sidebar keeps its width and slides out with its column; app.js makes it inert while it's away. */
 .side { position: relative; width: var(--side-w); display: flex; flex-direction: column; min-height: 0; background: var(--side); border-right: 1px solid var(--hair); transition: transform .2s linear; }
 .app.no-side .side { display: flex; transform: translateX(-100%); }
+/* T3 Dark's sidebar: pure black, its own foreground and muted grey, 8% white borders (index.css, dark --sidebar-*). */
+[data-theme="t3dark"] .side { --side: #000; --text: #f1f3f7; --dim: #a3a3a3; --hair: rgb(255 255 255 / 8%); }
 .app.side-resizing .side { transition: none; }
 .side > * { flex-shrink: 0; }
 .side-top { height: var(--bar-h); padding: 0 16px 0 48px; display: flex; align-items: center; -webkit-app-region: drag; } /* 48px: room for the toggle */
 .is-app .side-top { padding-left: 126px; }
-.brand { display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 14px var(--display); letter-spacing: -.01em; }
+.brand { display: flex; align-items: center; gap: 8px; min-width: 0; font: 500 14px var(--display); letter-spacing: -.01em; }
 .logo { width: 20px; height: 20px; }
 
 /* The search row: an h-8 field, then 28px icon buttons. */
-.side-head { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px; }
+.side-head { display: flex; align-items: center; gap: 4px; padding: 8px; } /* T3's p-2 group */
 .side-head[hidden], .side-head [hidden] { display: none; }
-.side-search { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 8px; color: var(--dim); cursor: text; transition: background .15s; }
-.side-search:hover, .side-search:focus-within { background: var(--softer); }
+.side-search { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 6px; color: var(--dim); cursor: text; transition: background .15s, color .15s; }
+.side-search:hover, .side-search:focus-within { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); } /* T3's row-hover fill */
+[data-mode="light"] .side-search:is(:hover, :focus-within) { background: var(--bg); }
 .side-search-input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: none; color: var(--text); font: 500 14px inherit; font-family: inherit; outline: none; }
 .side-search-input::placeholder { color: var(--dim); }
 .side .side-search-input:focus-visible { outline: none; } /* the ring goes on the rounded field instead */
@@ -39,8 +42,13 @@
 .side-icon { color: var(--dim); }
 .side-icon:hover { color: var(--text); }
 
-/* The list: cards for open threads, then the shelves. */
-.side-body { flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1px; padding: 0 8px 8px; }
+/* The list: cards for open threads, then the shelves. No scrollbar; a .75rem fade at whichever end has more (app.js sets
+   .fade-top and .fade-bottom), as T3's ScrollArea hideScrollbars scrollFade. */
+.side-body { flex: 1 1 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 1px; padding: 0 8px 8px; scrollbar-width: none;
+  --fade-top: 0px; --fade-bottom: 0px; mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent); }
+.side-body::-webkit-scrollbar { display: none; }
+.side-body.fade-top { --fade-top: .75rem; }
+.side-body.fade-bottom { --fade-bottom: .75rem; }
 .thread { display: flex; width: 100%; min-width: 0; border: 0; border-radius: 8px; background: none; color: var(--text); text-align: left; transition: background .15s; }
 .thread:hover { background: var(--softer); }
 .thread.current { background: var(--soft); }
@@ -53,18 +61,26 @@
 .thread-card { height: 78px; flex-direction: column; padding: 8px 10px; margin: 2px 0; flex-shrink: 0; } /* T3's h-[4.875rem] card row */
 .thread-top { height: 20px; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; color: var(--dim); }
 .thread-project { flex: 1; font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.thread-status { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.thread-status:not(.working):not(.needs-input) .dot { display: none; } /* calm threads show their time instead */
+.thread-status { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-variant-numeric: tabular-nums; transition: opacity .15s; }
+.thread-status:is(.working, .needs-input) { font-weight: 500; }
 .thread-status.working { color: var(--info); }
 .thread-status.needs-input { color: #a5b4fc; } /* T3's indigo-300 for input */
 [data-mode="light"] .thread-status.needs-input { color: #4f39f6; } /* indigo-600 */
-.thread-status .dot.working, .thread-status .dot.needs-input { background: currentColor; box-shadow: none; } /* the dot takes its label's colour */
+/* T3's Settle: on hover (or keyboard focus) the status slot fades and Settle takes its place. */
+.thread-row { position: relative; flex-shrink: 0; display: flex; }
+.side-projects-find { width: 100%; height: 28px; padding: 0 8px; margin-bottom: 4px; border-bottom: 1px solid var(--hair); }
+.side-projects-find:focus-visible { border-bottom-color: var(--ring); }
+.thread-settle { position: absolute; top: 10px; right: 4px; height: 20px; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border: 0; border-radius: 6px; background: none;
+  font-size: 12px; color: var(--dim); opacity: 0; pointer-events: none; transition: opacity .15s; }
+.thread-settle:hover { color: var(--text); }
+.thread-row:hover .thread-settle, .thread-settle:focus-visible { opacity: 1; pointer-events: auto; }
+.thread-row:hover .thread-status, .thread-row:has(.thread-settle:focus-visible) .thread-status { opacity: 0; }
 .thread-title { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500; }
 .thread-title > span, .thread.slim .thread-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .thread-title .icon { color: var(--dim); flex-shrink: 0; }
 .thread-card .thread-title { margin-top: 4px; color: color-mix(in srgb, var(--text) 90%, transparent); }
 .thread-meta { margin-top: 2px; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; }
-.thread-branch { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: color-mix(in srgb, var(--dim) 40%, transparent); }
+.thread-branch { display: inline-flex; white-space: nowrap; align-items: center; gap: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: color-mix(in srgb, var(--dim) 40%, transparent); }
 .thread.off .thread-title { opacity: .55; } /* hidden from the grid, still running */
 .thread.slim { height: 36px; flex-shrink: 0; align-items: center; gap: 10px; padding: 0 10px; }
 .thread.slim .thread-title { flex: 1; display: block; color: color-mix(in srgb, var(--dim) 70%, transparent); transition: color .15s; }
@@ -73,11 +89,11 @@
 .thread.slim:is(:hover, :focus-visible, .current) .monogram { opacity: 1; filter: none; }
 .thread-when { flex-shrink: 0; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .thread.slim.gone { opacity: .45; cursor: default; }
-.thread.more { gap: 8px; font-size: 13px; color: color-mix(in srgb, var(--dim) 80%, transparent); }
+.thread.more { gap: 8px; font-size: 14px; color: color-mix(in srgb, var(--dim) 55%, transparent); } /* T3: text-sm, muted/55 */
 .thread.more:hover { color: var(--text); }
 /* Threads an agent started, under its row: an indented rail of slim rows, and a count on the row that folds them. */
 .thread-group { position: relative; flex-shrink: 0; display: flex; flex-direction: column; gap: 1px; }
-.thread-group > .thread-card .thread-meta { padding-right: 44px; }
+.thread-group > .thread-row .thread-meta { padding-right: 44px; }
 .thread-group > .thread.slim { padding-right: 52px; }
 .thread-kids-toggle { position: absolute; right: 8px; top: 54px; height: 20px; display: inline-flex; align-items: center; gap: 3px; padding: 0 5px; border: 0; border-radius: 6px; background: none;
   font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -101,7 +117,7 @@
 .shelf-rule { flex: 1; height: 1px; background: color-mix(in srgb, var(--hair) 60%, transparent); }
 .shelf .icon { transition: transform .15s; }
 .shelf[aria-expanded="false"] .icon { transform: rotate(180deg); }
-.side-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 0; padding: 24px 8px; text-align: center; font-size: 12px; color: color-mix(in srgb, var(--dim) 60%, transparent); }
+.side-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; padding: 24px 8px; text-align: center; font-size: 12px; color: color-mix(in srgb, var(--dim) 60%, transparent); }
 .side-empty-add { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--hair-strong); border-radius: 6px; background: none; font-size: 12px; color: var(--text); }
 .side-empty-add:hover { background: var(--softer); }
 
@@ -116,7 +132,7 @@
 .side-row.side-hit > span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side-hit-sub { font-size: 11px; font-weight: 400; color: var(--dim); }
 
-/* The footer: icons, the version pill on the right. */
+/* The footer: icons, the version pill (Relay's own) on the right. */
 .side-foot { display: flex; align-items: center; gap: 4px; padding: 4px 8px; }
 .side-foot > .icon-btn { width: 32px; height: 32px; }
 .side-foot .side-back { flex: 1; width: auto; }
@@ -126,7 +142,7 @@
 .side-ver .ver.new { color: var(--info); border-color: var(--info); }
 .side-ver .debug-tag { font: 500 10px var(--mono); color: var(--dim); border: 1px solid var(--hair-strong); border-radius: 4px; padding: 1px 5px; }
 
-/* The rail: 16px to grab across the edge, a 2px line on hover. */
+/* The rail: 16px to grab across the edge, a 2px line on hover. A click hides the sidebar, a drag resizes it. */
 .side-rail { position: absolute; top: 0; bottom: 0; right: -8px; width: 16px; z-index: 4; cursor: col-resize; }
 .side-rail::after { content: ''; position: absolute; top: 0; bottom: 0; left: 7px; width: 2px; background: transparent; transition: background .15s; }
 .side-rail:hover::after, .side-resizing .side-rail::after { background: var(--hair-strong); }
@@ -137,13 +153,11 @@
 .side-projects .menu-item .sub { margin-left: 0; padding-left: 0; }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.app:has(#view-settings.active) .topbar { border-bottom-color: transparent; } /* T3's settings header has no rule */
-.topbar { height: var(--bar-h); display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; -webkit-app-region: drag; flex-shrink: 0; border-bottom: 1px solid var(--hair); background: var(--bg); }
+.topbar { height: var(--bar-h); display: flex; align-items: center; gap: 12px; padding: 0 12px 0 16px; -webkit-app-region: drag; flex-shrink: 0; background: var(--bg); } /* T3's WorkspacePageHeader: no rule */
 .topbar button, .topbar input, .topbar select { -webkit-app-region: no-drag; }
 .app.no-side .topbar { padding-left: 52px; } /* the sidebar is away: clear the toggle */
 .is-app .app.no-side .topbar { padding-left: 130px; } /* the traffic lights, then the toggle */
 .crumbs { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
-.view-icon { width: 28px; height: 28px; border-radius: var(--row-r); display: grid; place-items: center; flex-shrink: 0; color: var(--dim); background: var(--soft); }
 .crumbs .titles { display: flex; align-items: baseline; gap: 10px; line-height: 1.2; min-width: 0; }
 .crumbs h1 { margin: 0; flex-shrink: 0; font: 500 14px var(--display); white-space: nowrap; }
 .crumbs .muted { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

@@ -423,9 +423,12 @@ select.input.art-chat-model { width: auto; padding: 4px 8px; font-size: 12px; bo
 .features span { display: flex; gap: 9px; align-items: center; }
 .features .icon { color: var(--text); }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 13%, transparent); border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 22%, transparent); }
+/* T3's scrollbar: 6px, a 3px radius, the thumb 8% white (12% on hover); light uses solid greys. */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 8%); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 12%); }
+[data-mode="light"] ::-webkit-scrollbar-thumb { background: rgb(217 217 217); }
+[data-mode="light"] ::-webkit-scrollbar-thumb:hover { background: rgb(191 191 191); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {

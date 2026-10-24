@@ -23,6 +23,7 @@
   --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --ease: cubic-bezier(.2, .8, .2, 1);
 }
+:root[data-theme="t3dark"] { --hair: rgb(255 255 255 / 6%); } /* T3 Dark's hairline; --line stays hex for Claude Code's theme */
 /* Light: solid white surfaces on a near-white page, separated by borders and a short, soft shadow. */
 [data-mode="light"] {
   --glass: color-mix(in srgb, var(--panel) 92%, transparent);
@@ -57,11 +58,11 @@ code, .mono { font-family: var(--mono); font-size: 12px; }
 .grow { flex: 1; }
 [hidden] { display: none !important; }
 
-/* ---------- Background: one solid colour with a little grain ---------- */
+/* ---------- Background: one solid colour; a little grain only with the custom cursor (both off by default, as T3 has neither) ---------- */
 .app-bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--bg); }
-.app-bg .grain { position: absolute; inset: 0; opacity: .045; mix-blend-mode: overlay;
+.app-bg .grain { position: absolute; inset: 0; opacity: .035;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
-[data-mode="light"] .app-bg .grain { display: none; } /* grain reads as dirt on a light page */
+:root:not(.fancy-cursor) .app-bg .grain, [data-mode="light"] .app-bg .grain { display: none; } /* grain reads as dirt on a light page */
 
 /* ---------- Cursor: a dot that tracks the pointer and a ring that glides after it ---------- */
 .fancy-cursor, .fancy-cursor *:not(input, textarea, select, .xterm, .xterm *, .monaco-editor, .monaco-editor *, iframe, canvas) { cursor: none !important; }

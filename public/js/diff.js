@@ -1,16 +1,21 @@
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
 // The right-hand diff panel (#diffPanel) and the thread details popover. The panel shows what the current thread's
-// folder changed, as one stacked diff (T3's DiffPanel + StyledDiffCodeView), in plain HTML rather than Monaco.
+// folder changed, stacked or split (T3's DiffPanel + StyledDiffCodeView), in plain HTML coloured by Monaco's tokeniser.
 // Thread details shows its branch with Commit / Merge / Discard, the same calls the Review view makes.
 import { state, api, h, icon, on, emit, guard, actions, copy, shortBranch, baseName, ltr } from './ui.js';
 import { commit, merge, discard } from './review.js';
+import { loadMonaco } from './monaco.js';
 
 const WIDTH = 'agent-desk:diff-w';
+const LAYOUT = 'agent-desk:diff-layout';
 const MIN = 360;
 const SHEET = '(max-width: 980px)';
-let panel, body, statEl, handle;
+let panel, body, statEl, handle, tree, treeBtn, foldAllBtn;
 let open = false;
 let wrap = false;
+let split = (() => { try { return localStorage.getItem(LAYOUT) === 'split'; } catch { return false; } })();
+let treeOpen = false; // T3: off by default
+let picked = null; // the file last picked in the tree
 let folded = new Set(); // paths of collapsed files
 let current = { review: null, item: null, files: [] };
 let loading = 0; // so a slow answer for the last thread never replaces the current one's
@@ -36,8 +41,8 @@ async function loadThread() {
 }
 
 // ---------- Parsing git's unified diff ----------
-// Files: { path, status: 'A'|'D'|'M', binary, add, del, hunks: [{ gap, lines: [{ kind: 'add'|'del'|'ctx', n, text }] }] }
-// `gap` is how many unchanged lines come before the hunk.
+// Files: { path, status: 'A'|'D'|'M', binary, add, del, hunks: [{ gap, lines: [{ kind: 'add'|'del'|'ctx', n, o, text }] }] }
+// `gap` is how many unchanged lines come before the hunk; `n` is a line's number on its own side, `o` a context line's old one.
 export function parseDiff(text) {
   const files = [];
   let f = null, hunk = null, oldN = 0, newN = 0, lastEnd = 1;
@@ -61,14 +66,15 @@ export function parseDiff(text) {
       f.hunks.push(hunk);
     } else if (hunk && line.startsWith('+')) { hunk.lines.push({ kind: 'add', n: newN++, text: line.slice(1) }); f.add++; }
     else if (hunk && line.startsWith('-')) { hunk.lines.push({ kind: 'del', n: oldN++, text: line.slice(1) }); f.del++; }
-    else if (hunk && line.startsWith(' ')) { hunk.lines.push({ kind: 'ctx', n: newN++, text: line.slice(1) }); oldN++; }
+    else if (hunk && line.startsWith(' ')) hunk.lines.push({ kind: 'ctx', n: newN++, o: oldN++, text: line.slice(1) });
     if (hunk) lastEnd = f.status === 'D' ? oldN : newN;
   }
   return files;
 }
 
 // ---------- The panel ----------
-const savedWidth = () => { try { return Number(localStorage.getItem(WIDTH)) || 540; } catch { return 540; } };
+// T3's default is clamp(360px, 42vw, 560px); a dragged width is kept.
+const savedWidth = () => { try { return Number(localStorage.getItem(WIDTH)) || Math.min(560, Math.max(MIN, innerWidth * 0.42)); } catch { return 560; } };
 // T3: at least 360px, at most 70% of the window and never leaving the chat under 360px.
 const maxWidth = () => Math.max(MIN, Math.min(innerWidth * 0.7, innerWidth - (document.querySelector('.side')?.offsetWidth ?? 0) - MIN));
 function setWidth(px, save = false) {
@@ -98,38 +104,109 @@ const load = guard(async () => {
   render();
 });
 
+// T3's DiffStatLabel: ASCII minus, 1.2k past a thousand.
+const compact = n => (n < 1000 ? String(n) : n < 1e6 ? `${(n / 1e3 < 10 ? (n / 1e3).toFixed(1) : Math.round(n / 1e3)).toString().replace(/\.0$/, '')}k`
+  : `${(n / 1e6 < 10 ? (n / 1e6).toFixed(1) : Math.round(n / 1e6)).toString().replace(/\.0$/, '')}m`);
+const stat = (add, del) => [h('span', { class: 'a' }, `+${compact(add)}`), h('span', { class: 'd' }, `-${compact(del)}`)];
+
 function render() {
   const { review, item, files } = current;
-  statEl.replaceChildren(...(item?.files.length ? [h('span', { class: 'a' }, `+${item.add}`), h('span', { class: 'd' }, `−${item.del}`)] : []));
-  const empty = text => body.replaceChildren(h('div', { class: 'diff-empty' }, text));
-  if (!review) return empty('Loading…');
-  if (!review.git) return empty("This project isn't a git repository, so there are no changes to show.");
-  if (!files.length) return empty('No changes in this thread yet.');
-  body.replaceChildren(...files.map(fileView), current.cut ? h('div', { class: 'diff-empty' }, 'The rest of the diff is cut off. Open Review to see every file.') : '');
+  statEl.replaceChildren(...(item?.files.length ? stat(item.add, item.del) : []));
+  statEl.ariaLabel = item?.files.length ? `${item.add} additions, ${item.del} deletions` : null;
+  foldAllBtn.hidden = treeBtn.hidden = !files.length;
+  syncFoldAll();
+  tree.hidden = !treeOpen || !files.length;
+  const empty = (text, busy) => body.replaceChildren(h('div', { class: 'diff-empty', ...(busy && { role: 'status', 'aria-live': 'polite' }) }, text));
+  if (!review) return empty('Loading changes...', true);
+  if (!review.git) return empty('Turn diffs are unavailable because this project is not a git repository.');
+  if (!files.length) return empty('No net changes in this selection.');
+  body.replaceChildren(current.cut ? h('p', { class: 'diff-cut' }, 'This preview exceeds the size limit. Changes shown are incomplete.') : '', ...files.map(fileView));
+  if (treeOpen) renderTree();
+  colour(files);
+}
+
+// Syntax colour: each file's lines go through Monaco's tokeniser once, as one text (so a removed and an added line sit side by
+// side in it), and the lines' code spans take the coloured HTML. Rendering again reuses it; a theme change colours afresh.
+const LANG_ALIASES = { mjs: '.js', cjs: '.js', mts: '.ts', cts: '.ts' };
+function colour(files) {
+  loadMonaco().then(monaco => {
+    const langs = monaco.languages.getLanguages();
+    for (const f of files) {
+      if (f.html || !f.spans?.length) { f.html && paint(f); continue; }
+      const name = f.path.split('/').pop();
+      const ext = LANG_ALIASES[name.split('.').pop()] ?? `.${name.split('.').pop()}`.toLowerCase();
+      const lang = langs.find(l => l.filenames?.includes(name) || l.extensions?.includes(ext))?.id;
+      if (!lang) continue;
+      f.html = monaco.editor.colorize(f.hunks.flatMap(hk => hk.lines.map(l => l.text)).join('\n'), lang, {})
+        .then(html => { f.html = html.split('<br/>'); paint(f); }, () => {});
+    }
+  }).catch(() => {}); // plain text is fine
+}
+const paint = f => Array.isArray(f.html) && f.spans.forEach((els, i) => f.html[i] != null && els.forEach(el => { el.innerHTML = f.html[i] || ' '; }));
+
+// The header's Collapse/Expand all: its icon and label say what a click does.
+function syncFoldAll() {
+  const all = current.files.length > 0 && current.files.every(f => folded.has(f.path));
+  foldAllBtn.replaceChildren(icon(all ? 'chevronsUpDown' : 'chevronsDownUp', 14));
+  foldAllBtn.title = foldAllBtn.ariaLabel = all ? 'Expand all files' : 'Collapse all files';
+}
+
+function toggleFold(f, sec) {
+  folded.has(f.path) ? folded.delete(f.path) : folded.add(f.path);
+  const shut = folded.has(f.path);
+  sec.classList.toggle('folded', shut);
+  const fold = sec.querySelector('.diff-fold');
+  fold.setAttribute('aria-expanded', String(!shut));
+  fold.ariaLabel = `${shut ? 'Expand' : 'Collapse'} ${f.path}`;
+  fold.replaceChildren(icon(shut ? 'chevronRight' : 'chevronDown', 16));
+  syncFoldAll();
 }
 
 function fileView(f) {
   const tone = { A: 'new', D: 'gone', M: 'mod' }[f.status];
-  const fold = h('button', { class: 'diff-fold', 'aria-expanded': String(!folded.has(f.path)), 'aria-label': `Collapse ${f.path}`, onClick: () => {
-    folded.has(f.path) ? folded.delete(f.path) : folded.add(f.path);
-    sec.classList.toggle('folded', folded.has(f.path));
-    fold.setAttribute('aria-expanded', String(!folded.has(f.path)));
-  } }, icon('chevronDown', 16));
-  const copyBtn = h('button', { class: 'icon-btn sm', title: 'Copy path', 'aria-label': `Copy ${f.path}`, onClick: async () => {
+  const shut = folded.has(f.path);
+  f.spans = [];
+  let i = 0;
+  // One line's cell: its number and its code. `k` is its index in the file, so colour() can fill it in later.
+  const cell = (l, n, k) => {
+    const code = h('span', { class: 'code' }, l.text || ' ');
+    (f.spans[k] ??= []).push(code);
+    return h('div', { class: `dl ${l.kind}` }, h('span', { class: 'ln' }, n), code);
+  };
+  const blank = () => h('div', { class: 'dl blank' }, h('span', { class: 'ln' }), h('span', { class: 'code' }, ' '));
+  const gap = hunk => hunk.gap > 0 && h('div', { class: 'diff-gap' }, `${hunk.gap} unmodified line${hunk.gap === 1 ? '' : 's'}`);
+  // Split: context on both sides; a run of removed lines faces the run of added lines after it, row by row.
+  const splitRows = hunk => {
+    const rows = [];
+    const ls = hunk.lines.map(l => ({ l, k: i++ }));
+    for (let j = 0; j < ls.length;) {
+      if (ls[j].l.kind === 'ctx') { const { l, k } = ls[j++]; rows.push(cell(l, l.o, k), cell(l, l.n, k)); continue; }
+      const dels = [], adds = [];
+      while (j < ls.length && ls[j].l.kind === 'del') dels.push(ls[j++]);
+      while (j < ls.length && ls[j].l.kind === 'add') adds.push(ls[j++]);
+      for (let r = 0; r < Math.max(dels.length, adds.length); r++) {
+        rows.push(dels[r] ? cell(dels[r].l, dels[r].l.n, dels[r].k) : blank(), adds[r] ? cell(adds[r].l, adds[r].l.n, adds[r].k) : blank());
+      }
+    }
+    return rows;
+  };
+  const fold = h('button', { class: `diff-fold ${tone}`, 'aria-expanded': String(!shut), 'aria-label': `${shut ? 'Expand' : 'Collapse'} ${f.path}`,
+    onClick: () => toggleFold(f, sec) }, icon(shut ? 'chevronRight' : 'chevronDown', 16));
+  const copyBtn = h('button', { class: 'icon-btn sm diff-copy', title: 'Copy path', 'aria-label': 'Copy file path', onClick: async () => {
     await copy(f.path, 'Path copied');
     copyBtn.replaceChildren(icon('check', 12));
-    setTimeout(() => copyBtn.replaceChildren(icon('copy', 12)), 1200);
+    copyBtn.classList.add('done');
+    setTimeout(() => { copyBtn.replaceChildren(icon('copy', 12)); copyBtn.classList.remove('done'); }, 1200);
   } }, icon('copy', 12));
-  const sec = h('section', { class: `diff-file${folded.has(f.path) ? ' folded' : ''}` },
-    h('div', { class: 'diff-file-head' }, fold,
-      h('button', { class: `diff-path ${tone}`, title: `Open ${f.path}`, disabled: f.status === 'D', onClick: () => actions.openFile(`${current.item.path}/${f.path}`) }, ltr(f.path)),
-      h('span', { class: 'stat' }, f.add ? h('span', { class: 'a' }, `+${f.add}`) : null, f.del ? h('span', { class: 'd' }, `−${f.del}`) : null),
+  const sec = h('section', { class: `diff-file${shut ? ' folded' : ''}`, 'data-path': f.path },
+    // T3: a click anywhere on the header folds the file; its buttons keep their own actions.
+    h('div', { class: 'diff-file-head', onClick: e => !e.target.closest('button') && toggleFold(f, sec) }, fold,
+      h('button', { class: 'diff-path', title: `Open ${f.path}`, disabled: f.status === 'D', onClick: () => actions.openFile(`${current.item.path}/${f.path}`) }, ltr(f.path)),
+      h('span', { class: 'stat', role: 'group', 'aria-label': `${f.add} additions, ${f.del} deletions` }, f.add ? h('span', { class: 'a' }, `+${compact(f.add)}`) : null, f.del ? h('span', { class: 'd' }, `-${compact(f.del)}`) : null),
       copyBtn),
-    h('div', { class: 'diff-lines' }, h('div', { class: 'diff-rows' },
-      f.binary ? h('div', { class: 'diff-gap' }, 'Binary file, not shown') : f.hunks.flatMap(hunk => [
-        hunk.gap > 0 && h('div', { class: 'diff-gap' }, `${hunk.gap} unmodified line${hunk.gap === 1 ? '' : 's'}`),
-        ...hunk.lines.map(l => h('div', { class: `dl ${l.kind}` }, h('span', { class: 'ln' }, l.n), h('span', { class: 'code' }, l.text || ' '))),
-      ]))));
+    h('div', { class: 'diff-lines' }, h('div', { class: `diff-rows${split ? ' split' : ''}` },
+      f.binary ? h('div', { class: 'diff-gap' }, 'Binary file, not shown') : f.hunks.flatMap(hunk => [gap(hunk),
+        ...(split ? splitRows(hunk) : hunk.lines.map(l => cell(l, l.n, i++)))]))));
   return sec;
 }
 
@@ -137,6 +214,41 @@ function collapseAll() {
   const all = current.files.every(f => folded.has(f.path));
   folded = all ? new Set() : new Set(current.files.map(f => f.path));
   render();
+}
+
+// ---------- File tree ----------
+// T3's DiffFileTree: "Files" and a count, then the changed files under their folders, a folder holding only one folder
+// shown as one row ("public/js"). Folders start open. Picking a file opens it in the diff and scrolls to it.
+function renderTree() {
+  const root = { dirs: new Map(), files: [] };
+  for (const f of current.files) {
+    const parts = f.path.split('/');
+    let node = root;
+    for (const p of parts.slice(0, -1)) node = node.dirs.get(p) ?? node.dirs.set(p, { dirs: new Map(), files: [] }).get(p);
+    node.files.push({ name: parts.at(-1), f });
+  }
+  const tone = { A: 'new', D: 'gone', M: 'mod' };
+  const branch = (node, depth) => [
+    ...[...node.dirs].sort(([a], [b]) => a.localeCompare(b)).map(([name, d]) => {
+      while (d.dirs.size === 1 && !d.files.length) { const [[sub, inner]] = d.dirs; name += `/${sub}`; d = inner; }
+      return h('details', { class: 'dt-dir', open: true },
+        h('summary', { class: 'dt-row', style: `--depth:${depth}` }, icon('chevronRight', 12), h('span', { class: 'dt-name' }, name)), ...branch(d, depth + 1));
+    }),
+    ...node.files.sort((a, b) => a.name.localeCompare(b.name)).map(({ name, f }) =>
+      h('button', { class: `dt-row dt-file ${tone[f.status]}`, style: `--depth:${depth}`, title: f.path, 'aria-current': picked === f.path ? 'true' : null,
+        onClick: () => reveal(f) }, h('span', { class: 'dt-name' }, name))),
+  ];
+  tree.replaceChildren(
+    h('div', { class: 'dt-head' }, h('span', { class: 'dt-title' }, 'Files'), h('span', { class: 'dt-count' }, current.files.length)),
+    h('nav', { class: 'dt-body', 'aria-label': 'Changed files' }, ...branch(root, 0)));
+}
+
+function reveal(f) {
+  picked = f.path;
+  const sec = [...body.querySelectorAll('.diff-file')].find(el => el.dataset.path === f.path);
+  if (folded.has(f.path)) toggleFold(f, sec);
+  sec?.scrollIntoView({ block: 'start' });
+  for (const b of tree.querySelectorAll('.dt-file')) b.ariaCurrent = b.title === f.path ? 'true' : null;
 }
 
 // The 8px edge on the panel's left: drag it, or focus it and use the arrow keys.
@@ -177,7 +289,7 @@ const threadDetails = guard(async anchor => {
         !item.main && h('button', { class: 'btn xs', disabled: !item.files.length || running, title: running ? 'Wait for the agent to finish first' : `Merge into ${item.base}`, onClick: () => done(merge) }, icon('merge', 13), 'Merge'),
         !item.main && h('button', { class: 'btn xs danger', disabled: !item.recorded, title: item.recorded ? '' : "Relay didn't make this worktree and no agent edited it, so it won't delete it", onClick: () => done(discard) }, icon('trash', 13), 'Discard')),
       h('button', { class: 'td-row', onClick: () => { closeDetails(); toggle(true); } }, icon('fileDiff', 14), h('span', {}, 'Changes'),
-        h('span', { class: 'stat' }, h('span', { class: 'a' }, `+${item.add}`), ' ', h('span', { class: 'd' }, `−${item.del}`)))),
+        h('span', { class: 'stat' }, ...stat(item.add, item.del)))),
   ]));
   document.body.append(card);
   const r = anchor?.getBoundingClientRect() ?? { bottom: 46, right: innerWidth - 12 };
@@ -198,13 +310,33 @@ const threadDetails = guard(async anchor => {
 
 export function mount(el) {
   panel = el;
-  statEl = h('span', { class: 'stat diff-total' });
+  statEl = h('span', { class: 'stat diff-total', role: 'group' });
   body = h('div', { class: 'diff-body' });
-  const wrapBtn = h('button', { class: 'icon-btn sm', title: 'Wrap lines', 'aria-pressed': 'false', onClick: () => {
+  // A toggle's label says what pressing it does, as in T3.
+  const pressed = (btn, on, label) => { btn.setAttribute('aria-pressed', String(on)); btn.title = btn.ariaLabel = label; };
+  const wrapBtn = h('button', { class: 'icon-btn sm', onClick: () => {
     wrap = !wrap;
     body.classList.toggle('wrap', wrap);
-    wrapBtn.setAttribute('aria-pressed', String(wrap));
+    pressed(wrapBtn, wrap, wrap ? 'Disable line wrapping' : 'Enable line wrapping');
   } }, icon('textWrap', 14));
+  pressed(wrapBtn, false, 'Enable line wrapping');
+  treeBtn = h('button', { class: 'icon-btn sm', onClick: () => {
+    treeOpen = !treeOpen;
+    pressed(treeBtn, treeOpen, treeOpen ? 'Hide file tree' : 'Show file tree');
+    render();
+  } }, icon('folderTree', 14));
+  pressed(treeBtn, false, 'Show file tree');
+  foldAllBtn = h('button', { class: 'icon-btn sm', onClick: collapseAll });
+  // Stacked or Split, remembered.
+  const layoutBtn = (value, glyph, label) => h('button', { 'aria-label': label, title: label, 'aria-pressed': String(split === (value === 'split')), onClick: () => {
+    split = value === 'split';
+    try { localStorage.setItem(LAYOUT, value); } catch {}
+    for (const b of layoutGroup.children) b.setAttribute('aria-pressed', String(b === layoutGroup.children[split ? 1 : 0]));
+    render();
+  } }, icon(glyph, 14));
+  const layoutGroup = h('div', { class: 'segmented diff-layout', role: 'group', 'aria-label': 'Diff layout' },
+    layoutBtn('stacked', 'rows3', 'Stacked diff view'), layoutBtn('split', 'columns2', 'Split diff view'));
+  tree = h('aside', { class: 'diff-tree', hidden: true });
   el.setAttribute('aria-label', 'Diff');
   el.tabIndex = -1;
   el.append(resizer(),
@@ -213,10 +345,9 @@ export function mount(el) {
         h('button', { class: 'diff-tab-x', title: 'Close (⌘D)', 'aria-label': 'Close the diff panel', onClick: () => toggle(false) }, icon('x', 12)))),
     h('div', { class: 'diff-bar' },
       h('span', { class: 'diff-scope' }, 'Changes'), h('span', { class: 'grow' }), statEl,
-      h('button', { class: 'icon-btn sm', title: 'Refresh', 'aria-label': 'Refresh', onClick: () => load() }, icon('refresh', 14)),
-      h('button', { class: 'icon-btn sm', title: 'Collapse or expand all files', 'aria-label': 'Collapse or expand all files', onClick: collapseAll }, icon('chevronsDownUp', 14)),
-      wrapBtn),
-    body);
+      h('button', { class: 'icon-btn sm', title: 'Refresh diff', 'aria-label': 'Refresh diff', onClick: () => load() }, icon('refresh', 14)),
+      foldAllBtn, layoutGroup, wrapBtn, treeBtn),
+    h('div', { class: 'diff-main' }, body, tree));
   el.addEventListener('keydown', e => {
     if (e.key === 'Escape' && matchMedia(SHEET).matches) { e.stopPropagation(); toggle(false); }
   });
@@ -245,5 +376,6 @@ export function mount(el) {
   const later = () => { clearTimeout(timer); timer = setTimeout(() => open && load(), 800); };
   on('sessions', later);
   on('project', later);
+  on('theme', () => { for (const f of current.files) f.html = null; if (open) colour(current.files); });
   addEventListener('resize', () => open && setWidth(savedWidth()));
 }

@@ -68,7 +68,7 @@ function groupsFor(query, sub) {
   if (query.startsWith('>')) return all;
   return [...all,
     ['Projects', state.projects.map(p => ({ title: p.name, icon: 'folder', sub: p.path.replace(state.info.home, '~'), run: () => actions.switchProject(p.path) }))],
-    ['Settings', VIEWS.map((v, i) => ({ title: v.label, icon: v.icon, sub: v.hint, kbd: `⌘${i + 1}`, run: view(v.id) }))],
+    ['Pages', VIEWS.map((v, i) => ({ title: v.label, icon: v.icon, sub: v.hint, kbd: `⌘${i + 1}`, run: view(v.id) }))],
     ['Threads', [
       ...chats().map(threadItem),
       // shells and browser panes have no chat; the old palette listed every pane in the grid

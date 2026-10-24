@@ -1,8 +1,9 @@
-// The composer of a chat view (chat.js): T3's floating glass card with the model chip, usage limits, context ring and Send/Stop,
-// and the banner attached on top of it while Claude asks something, whose options you can pick from here.
+// The composer of a chat view (chat.js): T3's floating glass card with the model chip, usage limits, context ring, Attach
+// and Send/Stop; the `/` and `@` menu above it; and the banner attached on top of it while Claude asks something,
+// whose options you can pick from here.
 // The page above hears 'sent' on `el` after a message goes out, so it can scroll to the end.
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
-// From ChatComposer, ComposerControl, ComposerPendingApprovalPanel, ComposerPendingApprovalActions,
+// From ChatComposer, ComposerCommandMenu, ComposerAttachmentStrip, ComposerControl, ComposerPendingApprovalPanel, ComposerPendingApprovalActions,
 // ComposerPendingUserInputPanel, ComposerPrimaryActions, ContextWindowMeter, ComposerUsageLimits (LimitWindows)
 // and UsageLimitRecoveryBanner.
 import { api, h, icon, menu, money, on } from './ui.js';
@@ -92,6 +93,21 @@ const popRow = (label, value) => h('div', { class: 'chat-pop-row' }, h('span', {
 const MODELS = [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
 const modelName = id => MODELS.find(([m]) => m === id)?.[1] ?? 'Default model';
 
+// Claude Code's built-in commands for the `/` menu; the project's and your own .claude/commands/*.md join them.
+const COMMANDS = [['add-dir', 'Add a working directory'], ['agents', 'Manage subagents'], ['clear', 'Start a new conversation'],
+  ['compact', 'Compact the conversation'], ['config', 'Open settings'], ['context', 'Show what fills the context window'],
+  ['cost', 'Show tokens and cost so far'], ['doctor', 'Check the Claude Code install'], ['export', 'Export the conversation'],
+  ['help', 'Show help'], ['hooks', 'Manage hooks'], ['init', 'Write a CLAUDE.md for this project'], ['mcp', 'Manage MCP servers'],
+  ['memory', 'Edit memory files'], ['model', 'Switch the model'], ['permissions', 'Manage tool permissions'],
+  ['resume', 'Resume an earlier conversation'], ['review', 'Review a pull request'], ['rewind', 'Rewind the conversation or code'],
+  ['status', 'Show version, model and account'], ['usage', 'Show plan usage limits']];
+// The word being typed at the caret, if it opens the menu: `/` at the very start of the box, or `@` anywhere.
+export function triggerAt(text, caret) {
+  const m = /(^|\s)([@/])(\S*)$/.exec(text.slice(0, caret));
+  if (!m || (m[2] === '/' && m.index + m[1].length > 0)) return null;
+  return { kind: m[2], query: m[3], start: caret - m[3].length - 1, end: caret };
+}
+
 export function composer(p) {
   let panel = null; // what the docked panel shows, or null
   let shown = ''; // the menu it was built from, so a feed read with the same menu leaves it alone
@@ -100,11 +116,14 @@ export function composer(p) {
   let model = p.session.model; // picked here, it's ours: the session keeps the model it started with
 
   const dock = h('div', { class: 'chat-dock', hidden: true });
-  const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'Message Claude', onInput: () => buttons(), onKeydown: e => {
-    if (e.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-    if (e.key === 'Escape') { e.preventDefault(); p.send('\x1b'); } // interrupts Claude, as in the terminal
-  } });
+  const drawer = h('div', { class: 'chat-dock chat-menu', id: `chat-menu-${++pops}`, role: 'listbox', hidden: true, onPointerdown: e => e.preventDefault() });
+  const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'Message Claude', 'aria-autocomplete': 'list', 'aria-controls': drawer.id,
+    onInput: () => { buttons(); suggest(); }, onClick: () => suggest(), onBlur: () => closeMenu(), onKeydown: e => {
+      if (e.isComposing) return;
+      if (found && menuKey(e)) return;
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+      if (e.key === 'Escape') { e.preventDefault(); p.send('\x1b'); } // interrupts Claude, as in the terminal
+    }, onKeyup: e => /^(Arrow(Left|Right)|Home|End)$/.test(e.key) && suggest() });
   const arc = svg('circle', { cx: 12, cy: 12, r: R, class: 'chat-ring-arc', 'stroke-dasharray': CIRCLE, 'stroke-dashoffset': CIRCLE });
   const rings = svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
   rings.append(svg('circle', { cx: 12, cy: 12, r: R, class: 'chat-ring-track' }), arc);
@@ -116,15 +135,25 @@ export function composer(p) {
   const usage = popover(limitsButton);
   const limitBanner = h('div', { class: 'chat-dock chat-limit', role: 'status', hidden: true });
   const modelLabel = h('span', {}, modelName(model));
-  const chip = h('button', { type: 'button', class: 'chat-control', 'aria-haspopup': 'menu', title: 'Model', onClick: () => pickModel() },
-    modelLabel, icon('chevronDown', 14));
-  const stop = h('button', { type: 'button', class: 'chat-go stop', title: 'Interrupt (Esc)', 'aria-label': 'Stop generation', hidden: true, onClick: () => p.send('\x1b'),
+  const chip = h('button', { type: 'button', class: 'chat-control chat-model', 'aria-haspopup': 'menu', title: 'Model', onClick: () => pickModel() },
+    icon('sparkles', 16), modelLabel, icon('chevronDown', 14));
+  // Attach: starts an `@` mention at the caret, whose menu picks a file or folder; Claude Code reads what it names.
+  const attach = h('button', { type: 'button', class: 'chat-attach', title: 'Attach files', 'aria-label': 'Attach files', onClick: () => {
+    const at = input.selectionStart;
+    const gap = at > 0 && !/\s/.test(input.value[at - 1]) ? ' ' : '';
+    input.focus();
+    input.setRangeText(`${gap}@`, at, input.selectionEnd, 'end');
+    buttons();
+    suggest();
+  } }, icon('paperclip', 16));
+  const stop = h('button', { type: 'button', class: 'chat-go stop', title: 'Interrupt (Esc)', 'aria-label': 'Interrupt', hidden: true, onClick: () => p.send('\x1b'),
     innerHTML: '<svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5"/></svg>' });
-  const send = h('button', { type: 'button', class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send message', disabled: true, onClick: () => submit(),
-    innerHTML: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' });
+  const arrow = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const send = h('button', { type: 'button', class: 'chat-go', disabled: true, onClick: () => submit(), innerHTML: arrow });
+  let steering = null; // what Send shows: Submit, or Steer while Claude works (Claude Code takes the message mid-turn)
   const card = h('div', { class: 'chat-card' }, input,
-    h('div', { class: 'chat-controls' }, chip, h('span', { class: 'grow' }), usage.wrap, meter.wrap, stop, send));
-  const el = h('div', { class: 'chat-composer' }, h('div', { class: 'chat-composer-lane' }, limitBanner, dock, card));
+    h('div', { class: 'chat-controls' }, chip, h('span', { class: 'grow' }), usage.wrap, meter.wrap, attach, stop, send));
+  const el = h('div', { class: 'chat-composer' }, h('div', { class: 'chat-composer-lane' }, limitBanner, dock, drawer, card));
 
   // The usage-limits control: "Session 23% · resets in 2h 5m · Weekly 41%" (used), T3's LimitWindows (left) over it,
   // and its "Usage limit reached" banner on the card while a window is used up. Nothing at all before any limits
@@ -180,6 +209,10 @@ export function composer(p) {
     if (choosing) return;
     choosing = true;
     dock.classList.add('busy');
+    // T3 marks the pick at once: muted fill and a check where its number was.
+    const row = dock.querySelector(`.chat-option[data-n="${o.n}"]`);
+    row?.classList.add('on');
+    row?.querySelector('kbd')?.replaceWith(icon('check', 14));
     try {
       await api('POST', `/api/sessions/${p.id}/choose`, { n: o.n, label: o.label });
     } catch (e) {
@@ -196,7 +229,84 @@ export function composer(p) {
     stop.hidden = !(working && empty);
     send.hidden = !stop.hidden;
     send.disabled = empty || input.disabled;
-    chip.disabled = input.disabled;
+    chip.disabled = attach.disabled = input.disabled;
+    if (steering === working) return;
+    steering = working;
+    send.innerHTML = working ? icon('cornerUpRight', 16).innerHTML : arrow;
+    send.setAttribute('aria-label', working ? 'Steer message' : 'Submit message');
+    send.title = working ? 'Steer: Claude reads it mid-turn (Enter)' : 'Send (Enter; Shift+Enter for a new line)';
+  }
+
+  // The `/` and `@` menu (T3's ComposerCommandMenu): a drawer on top of the card, ↑↓ to move, Enter or Tab to pick,
+  // Esc to close. `@` lists the session's folder level by level: a folder opens, a file ends the mention.
+  let found = null; // { ...the trigger, items, i }, while the drawer is up
+  let asked = 0; // so a slow listing can't overwrite a newer one
+  let dismissed = ''; // the trigger Esc closed, kept closed until it changes
+  const listings = new Map();
+  const list = dir => {
+    if (!listings.has(dir)) listings.set(dir, api('GET', `/api/fs/list?path=${encodeURIComponent(dir)}`).catch(() => []));
+    return listings.get(dir);
+  };
+  const own = async dir => (await list(dir)).filter(f => !f.dir && f.name.endsWith('.md')).map(f => [f.name.slice(0, -3), dir.startsWith('~') ? 'Your command' : 'Project command']);
+  async function itemsFor(t) {
+    const q = t.query.toLowerCase();
+    if (t.kind === '/') {
+      const all = [...COMMANDS, ...await own(`${p.session.cwd}/.claude/commands`), ...await own('~/.claude/commands')];
+      return all.filter(([name]) => name.toLowerCase().includes(q)).sort(([a], [b]) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q))
+        .map(([name, desc]) => ({ label: `/${name}`, desc, icon: 'terminal', text: `/${name} ` }));
+    }
+    const cut = t.query.lastIndexOf('/') + 1;
+    const dir = t.query.slice(0, cut), part = q.slice(cut);
+    return (await list(`${p.session.cwd}/${dir}`))
+      .filter(f => f.name.toLowerCase().includes(part) && (part.startsWith('.') || !f.name.startsWith('.')))
+      .sort((a, b) => b.name.toLowerCase().startsWith(part) - a.name.toLowerCase().startsWith(part))
+      .slice(0, 50)
+      .map(f => ({ label: f.name + (f.dir ? '/' : ''), desc: dir, icon: f.dir ? 'folder' : 'file', text: `@${dir}${f.name}${f.dir ? '/' : ' '}`, open: f.dir }));
+  }
+  async function suggest() {
+    const t = !input.disabled && document.activeElement === input && input.selectionStart === input.selectionEnd ? triggerAt(input.value, input.selectionStart) : null;
+    const key = t && `${t.start}:${t.kind}${t.query}`;
+    if (!t || key === dismissed) return closeMenu();
+    dismissed = '';
+    const mine = ++asked;
+    const items = await itemsFor(t);
+    if (mine !== asked) return;
+    found = { ...t, key, items, i: 0 };
+    drawMenu();
+  }
+  function closeMenu() {
+    asked++;
+    found = null;
+    drawer.hidden = true;
+    input.removeAttribute('aria-activedescendant');
+  }
+  function drawMenu() {
+    const { items, i, kind } = found;
+    drawer.hidden = false;
+    drawer.setAttribute('aria-label', kind === '/' ? 'Commands' : 'Files and folders');
+    drawer.replaceChildren(items.length ? h('div', { class: 'chat-menu-list' }, items.map((it, n) => h('div', {
+      class: `chat-menu-item${n === i ? ' on' : ''}`, id: `${drawer.id}-${n}`, role: 'option', 'aria-selected': String(n === i), onClick: () => pick(it),
+    }, icon(it.icon, 16), h('span', { class: 'chat-menu-label' }, it.label), h('span', { class: 'chat-menu-desc' }, it.desc))))
+      : h('p', { class: 'chat-menu-empty' }, kind === '/' ? 'No matching command.' : 'No matching files or folders.'));
+    if (items.length) input.setAttribute('aria-activedescendant', `${drawer.id}-${i}`);
+    else input.removeAttribute('aria-activedescendant');
+    drawer.querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  }
+  function pick(it) {
+    input.setRangeText(it.text, found.start, found.end, 'end');
+    buttons();
+    if (it.open) suggest();
+    else closeMenu();
+  }
+  // The keys the open drawer takes; true when it took one.
+  function menuKey(e) {
+    const n = found.items.length;
+    if (e.key === 'Escape') dismissed = found.key, closeMenu();
+    else if (n && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) found.i = (found.i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n, drawMenu();
+    else if (n && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey))) pick(found.items[found.i]);
+    else return false;
+    e.preventDefault();
+    return true;
   }
 
   // The menu opens above the chip, as the composer sits at the foot of the window.
@@ -211,7 +321,7 @@ export function composer(p) {
   }
 
   const terminalButton = () => h('button', { type: 'button', class: 'btn xs ghost', onClick: () => p.showChat(false) }, icon('terminal', 12), 'Open terminal');
-  const optionRow = o => h('button', { type: 'button', class: 'chat-option', onClick: () => choose(o) },
+  const optionRow = o => h('button', { type: 'button', class: 'chat-option', 'data-n': o.n, onClick: () => choose(o) },
     h('span', { class: 'chat-option-text' }, h('span', {}, o.label), o.description && h('span', { class: 'chat-option-desc' }, o.description)),
     o.n <= 9 && h('kbd', {}, String(o.n)));
 

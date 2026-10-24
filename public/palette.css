@@ -11,14 +11,30 @@
   box-shadow: inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%);
 }
 [data-mode="light"] .palette { border-color: color-mix(in srgb, #000 10%, transparent); box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%); }
+/* T3's dialog: in and out over 200ms, scaling from and to .98 as it fades. */
+.palette { transition: scale .2s ease-in-out, opacity .2s ease-in-out; }
+@starting-style { .palette { scale: .98; opacity: 0; } }
+.pal-overlay { transition: opacity .2s; }
+.pal-overlay.closing { opacity: 0; pointer-events: none; }
+.pal-overlay.closing .palette { scale: .98; opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .palette, .pal-overlay { transition: none; } }
 
 .pal-input { position: relative; flex: none; padding: 6px 8px; }
-.pal-input > .icon { position: absolute; left: 22px; top: 50%; translate: 0 -50%; color: var(--dim); opacity: .8; pointer-events: none; }
+.pal-input-icon { display: flex; position: absolute; left: 18px; top: 50%; translate: 0 -50%; color: var(--dim); opacity: .8; pointer-events: none; }
 .pal-input input { width: 100%; height: 34px; padding: 0 11px 0 32px; border: 0; background: none; font-size: 14px; color: var(--text); outline: none; }
 .pal-input input::placeholder { color: var(--dim); }
 
 .pal-panel { display: flex; flex-direction: column; min-height: 0; max-height: min(28rem, 70vh); overflow: hidden; }
-.pal-list { overflow-y: auto; overscroll-behavior: contain; padding: 8px; scroll-padding: 8px 0; }
+.pal-list { overflow-y: auto; overscroll-behavior: contain; padding: 8px; scroll-padding: 24px 0; }
+/* T3's scroll fades: 24px at an edge with more above or below it, driven by the list's own scroll. */
+@property --pal-fade-top { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --pal-fade-bottom { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes pal-fade { from { --pal-fade-top: 0px; --pal-fade-bottom: 24px; } 8%, 92% { --pal-fade-top: 24px; --pal-fade-bottom: 24px; } to { --pal-fade-top: 24px; --pal-fade-bottom: 0px; } }
+@supports (animation-timeline: scroll()) {
+  .pal-list { animation: pal-fade linear both; animation-timeline: scroll(self);
+    mask-image: linear-gradient(transparent, #000 var(--pal-fade-top), #000 calc(100% - var(--pal-fade-bottom)), transparent); }
+}
+.pal-group + .pal-group { margin-top: 6px; }
 .pal-heading { padding: 6px 8px; color: var(--dim); font-size: 12px; line-height: 16px; font-weight: 500; }
 .pal-item { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 6px 8px; border-radius: calc(var(--radius) - 4px); font-size: 14px; line-height: 20px; cursor: pointer; user-select: none; }
 .pal-item[data-active] { background: var(--soft); }
@@ -30,15 +46,17 @@
 .pal-text .pal-title { flex: none; }
 .pal-sub { min-width: 0; line-height: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; color: color-mix(in srgb, var(--dim) 70%, transparent); }
 .pal-time { flex: none; min-width: 48px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--dim) 70%, transparent); }
+.pal-more { display: flex; flex: none; margin: 0 -2px 0 auto; color: color-mix(in srgb, var(--dim) 70%, transparent); }
 .pal-item kbd.pal-shortcut { flex: none; margin-left: auto; height: auto; padding: 0; background: none; color: var(--dim); font: 500 12px var(--sans); letter-spacing: .1em; }
 .pal-empty { padding: 40px 0; text-align: center; font-size: 14px; color: var(--dim); }
 
 .pal-foot {
-  display: flex; align-items: center; gap: 12px; flex: none; padding: 10px 16px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; flex: none; padding: 10px 16px;
   border-radius: 0 0 calc(var(--radius) + 7px) calc(var(--radius) + 7px);
   background: color-mix(in srgb, var(--text) 2.5%, transparent); color: var(--dim); font-size: 14px; line-height: 20px; font-weight: 500;
 }
 .pal-keys { display: inline-flex; align-items: center; gap: 4px; }
+.pal-keys[hidden] { display: none; }
 .pal-foot kbd { height: 20px; min-width: 20px; padding: 0 4px; border-radius: 4px; gap: 4px; background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); font: 500 12px var(--sans); }
 .pal-foot kbd .icon { width: 12px; height: 12px; }
 .pal-down { display: inline-flex; rotate: 180deg; }

@@ -1,6 +1,7 @@
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
-// The command palette (⌘K). With no query: Actions and Recent threads. Typing searches every action,
-// project, page, theme and thread. Start with ">" to search actions only.
+// The command palette (⌘K). With no query: Actions and Recent Threads. Typing searches every action,
+// project, page and thread. Start with ">" to search actions only. "New thread in..." and "Change theme"
+// open a list of their own, which Backspace in an empty box leaves.
 import { state, h, icon, actions, commands, openSpaces, gridSessions, baseName, ago, chatTitle } from './ui.js';
 import { THEMES } from './themes.js';
 
@@ -23,6 +24,8 @@ function topActions(used) {
   const grid = state.layout === 'grid';
   return [
     cmd('New thread', { run: () => actions.newChat(state.project) }),
+    state.projects.length > 1 && { title: 'New thread in...', icon: 'squarePen', terms: ['project', 'pick', 'choose'],
+      groups: () => [['Projects', state.projects.map(p => ({ title: p.name, icon: 'folder', sub: p.path.replace(state.info.home, '~'), run: () => actions.newChat(p.path) }))]] },
     cmd('New shell', { icon: 'terminalSquare' }),
     cmd('New space (add a project folder)', { title: 'Add project', icon: 'folderPlus' }),
     cmd('Toggle terminal', { icon: 'panelBottom', kbd: '⌘J', sub: '' }),
@@ -30,7 +33,9 @@ function topActions(used) {
     { title: grid ? 'Thread view' : 'Grid view', icon: grid ? 'squareMenu' : 'layoutGrid', run: () => actions.setLayout(grid ? 'thread' : 'grid') },
     cmd('Toggle voice input', { title: 'Voice', icon: 'mic', kbd: '⌘⇧M', sub: '' }),
     { title: 'Usage', icon: 'chartBar', run: view('spend') },
-    { title: 'Settings', icon: 'settings2', run: view('settings') },
+    { title: 'Settings', icon: 'settingsGear', run: view('settings') },
+    { title: 'Change theme', icon: 'palette', terms: ['appearance', 'dark', 'light'],
+      groups: () => [['Change theme', Object.entries(THEMES).map(([id, t]) => ({ title: t.name, icon: state.settings.theme === id ? 'check' : 'palette', run: () => actions.setSetting({ theme: id }) }))]] },
   ].filter(Boolean);
 }
 
@@ -54,16 +59,16 @@ const threadItem = c => ({
 const chats = () => state.chats.filter(c => !c.artifactId); // newest first, from the server
 const byAgent = c => c.startedBy && !c.talked; // left out of Recent, as the sidebar leaves them out
 
-function groupsFor(query) {
+function groupsFor(query, sub) {
+  if (sub) return sub.groups();
   const used = new Set();
   const top = topActions(used);
-  if (!query) return [['Actions', top], ['Recent threads', chats().filter(c => !byAgent(c)).slice(0, 8).map(threadItem)]];
+  if (!query) return [['Actions', top], ['Recent Threads', chats().filter(c => !byAgent(c)).slice(0, 8).map(threadItem)]];
   const all = [['Actions', [...top, ...moreActions(used)]]];
   if (query.startsWith('>')) return all;
   return [...all,
     ['Projects', state.projects.map(p => ({ title: p.name, icon: 'folder', sub: p.path.replace(state.info.home, '~'), run: () => actions.switchProject(p.path) }))],
-    ['Pages', VIEWS.map((v, i) => ({ title: v.label, icon: v.icon, sub: v.hint, kbd: `⌘${i + 1}`, run: view(v.id) }))],
-    ['Themes', Object.entries(THEMES).map(([id, t]) => ({ title: `Theme: ${t.name}`, icon: 'palette', sub: state.settings.theme === id ? 'Current theme' : '', run: () => actions.setSetting({ theme: id }) }))],
+    ['Settings', VIEWS.map((v, i) => ({ title: v.label, icon: v.icon, sub: v.hint, kbd: `⌘${i + 1}`, run: view(v.id) }))],
     ['Threads', [
       ...chats().map(threadItem),
       // shells and browser panes have no chat; the old palette listed every pane in the grid
@@ -79,10 +84,10 @@ const rank = (title, q, words) => {
   const t = title.toLowerCase();
   return t === q ? 3 : t.startsWith(q) ? 2 : words.every(w => new RegExp(`(^|[^\\p{L}\\p{N}])${escape(w)}`, 'u').test(t)) ? 1 : 0;
 };
-function search(query) {
+function search(query, sub) {
   const q = query.trim().replace(/^>/, '').trim().toLowerCase();
   const words = q.split(/\s+/).filter(Boolean);
-  return groupsFor(query.trim()).map(([label, items]) => [label, !words.length ? items : items
+  return groupsFor(query.trim(), sub).map(([label, items]) => [label, !words.length ? items : items
     .filter(c => words.every(w => [c.title, c.sub, ...(c.terms ?? [])].join(' ').toLowerCase().includes(w)))
     .map((c, i) => ({ c, i, r: rank(c.title, q, words) }))
     .sort((a, b) => b.r - a.r || a.i - b.i)
@@ -92,8 +97,8 @@ function search(query) {
 }
 
 function openPalette() {
-  if (document.querySelector('.palette')) return;
-  const back = document.activeElement; // focus goes back here on close, as T3's dialog does
+  if (document.querySelector('.pal-overlay:not(.closing)')) return;
+  const returnTo = document.activeElement; // focus goes back here on close, as T3's dialog does
   const input = h('input', {
     placeholder: 'Search commands, projects, and threads...', spellcheck: false, autocomplete: 'off',
     role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'pal-list', 'aria-autocomplete': 'list', 'aria-label': 'Search commands, projects, and threads',
@@ -101,6 +106,7 @@ function openPalette() {
   const list = h('div', { class: 'pal-list', id: 'pal-list', role: 'listbox', 'aria-label': 'Results' });
   let rows = [];
   let selected = 0;
+  const stack = []; // the submenus open, innermost last
   const select = i => {
     rows[selected]?.el.removeAttribute('data-active');
     rows[selected]?.el.setAttribute('aria-selected', 'false');
@@ -123,41 +129,53 @@ function openPalette() {
       ? h('span', { class: 'pal-text' }, h('span', { class: 'pal-title' }, c.title), h('span', { class: 'pal-sub' }, c.sub))
       : h('span', { class: 'pal-title' }, c.title),
     c.time && h('span', { class: 'pal-time' }, c.time),
-    c.kbd && h('kbd', { class: 'pal-shortcut' }, c.kbd));
+    c.kbd && h('kbd', { class: 'pal-shortcut' }, c.kbd),
+    c.groups && h('span', { class: 'pal-more' }, icon('chevronRight', 16)));
     rows.push({ el, c });
     return el;
   };
+  const searchIcon = h('span', { class: 'pal-input-icon' });
   const render = () => {
     rows = [];
-    const groups = search(input.value);
+    const sub = stack.at(-1);
+    searchIcon.replaceChildren(icon(sub?.icon ?? 'search', 16));
+    back.hidden = !sub;
+    const groups = search(input.value, sub);
     list.replaceChildren(...(groups.length
       ? groups.map(([label, items], g) => h('div', { class: 'pal-group', role: 'group', 'aria-labelledby': `pal-group-${g}` },
         h('div', { class: 'pal-heading', id: `pal-group-${g}` }, label), items.map(item)))
-      : [h('div', { class: 'pal-empty' }, input.value.trim().startsWith('>') ? 'No matching actions.' : 'No matching commands, projects, or threads.')]));
+      : [h('div', { class: 'pal-empty' }, sub || !input.value.trim().startsWith('>') ? 'No matching commands, projects, or threads.' : 'No matching actions.')]));
+    enter.hidden = !rows.length;
     selected = 0;
     select(0);
   };
+  // T3's dialog scales to .98 and fades out over 200ms (palette.css), then goes.
   const close = () => {
-    overlay.remove();
-    if (back?.isConnected) back.focus({ preventScroll: true });
+    overlay.classList.add('closing');
+    setTimeout(() => overlay.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200);
+    if (returnTo?.isConnected) returnTo.focus({ preventScroll: true });
   };
-  const run = c => { close(); c.run(); };
+  const open = c => { stack.push(c); input.value = ''; render(); };
+  const run = c => (c.groups ? open(c) : (close(), c.run()));
   input.addEventListener('input', render);
   input.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (rows.length) select((selected + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length);
     } else if (e.key === 'Enter' && rows[selected]) { e.preventDefault(); run(rows[selected].c); }
+    else if (e.key === 'Backspace' && !input.value && stack.length) { e.preventDefault(); stack.pop(); render(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } // not also the board's drawer
     else if (e.key === 'Tab') e.preventDefault(); // the input is the dialog's only stop
   });
   const keys = (chips, label) => h('span', { class: 'pal-keys' }, chips.map(k => h('kbd', {}, k)), h('span', {}, label));
+  const enter = keys(['Enter'], 'Select');
+  const back = keys(['Backspace'], 'Back');
   const overlay = h('div', { class: 'overlay pal-overlay', onMousedown: e => e.target === overlay && close() },
     h('div', { class: 'modal palette', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Command palette' },
-      h('div', { class: 'pal-input' }, icon('search', 16), input),
+      h('div', { class: 'pal-input' }, searchIcon, input),
       h('div', { class: 'pal-panel' }, list),
       h('div', { class: 'pal-foot' },
-        keys([icon('arrowUp', 12), h('span', { class: 'pal-down' }, icon('arrowUp', 12))], 'Navigate'), keys(['Enter'], 'Select'), keys(['Esc'], 'Close'))));
+        keys([icon('arrowUp', 12), h('span', { class: 'pal-down' }, icon('arrowUp', 12))], 'Navigate'), enter, back, keys(['Esc'], 'Close'))));
   document.body.append(overlay);
   render();
   input.focus();

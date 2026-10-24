@@ -56,6 +56,14 @@ assert.equal(migrated({ fancyCursor: true }).fancyCursor, true, 'turned on after
   const src = fs.readFileSync(new URL('./public/js/settings.js', import.meta.url), 'utf8').match(/^const DEFAULTS = (\{[\s\S]*?\n\});/m)[1];
   for (const [k, [, v]] of Object.entries(new Function(`return ${src}`)())) assert.deepEqual(v, STORE_DEFAULTS.settings[k], `settings.js default for ${k}`);
 }
+{ // A never-ending animation must run on the GPU alone: one that animates box-shadow or a filter repaints every frame
+  const pub = new URL('./public/', import.meta.url);
+  const css = fs.readdirSync(pub).filter(f => f.endsWith('.css')).map(f => fs.readFileSync(new URL(f, pub), 'utf8')).join('\n');
+  for (const [, name] of css.matchAll(/animation:\s*([\w-]+)[^;}]*\binfinite/g)) {
+    const frames = css.match(new RegExp(`@keyframes ${name}\\s*{((?:[^{}]*{[^}]*})*)`))?.[1] ?? '';
+    assert.doesNotMatch(frames, /box-shadow|filter/, `the never-ending ${name} animation repaints on every frame: animate transform or opacity instead`);
+  }
+}
 assert.equal(db.settings.fancyCursor, false, 'the custom cursor is off by default');
 assert.ok(desk.token.length >= 32, 'an empty token file is replaced with a real secret');
 assert.ok(!fs.existsSync(path.join(tmp, 'data', 'mcp', 'gone1234.json')), "a session's MCP file never outlives a restart");

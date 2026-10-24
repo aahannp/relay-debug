@@ -24,7 +24,7 @@
 @keyframes paneIn { from { opacity: 0; transform: scale(.985); } }
 .pane.hidden { display: none; }
 .pane.focus { border-color: var(--ring, var(--info)); box-shadow: 0 0 0 1px var(--ring, var(--info)); }
-.pane.attn { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); animation: attn 1.6s ease-in-out infinite; }
+.pane.attn { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); animation: attn 1.6s ease-in-out 3; } /* a few pulses, then a steady ring: a pane can wait for hours */
 @keyframes attn { 50% { box-shadow: 0 0 0 1px var(--warn), 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent); } }
 .pane-head { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 12px; flex-shrink: 0; user-select: none;
   background: var(--panel); border-bottom: 1px solid var(--line); }

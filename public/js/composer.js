@@ -1,10 +1,11 @@
-// The composer of a chat view (chat.js): T3's floating glass card with the model chip, context ring and Send/Stop,
+// The composer of a chat view (chat.js): T3's floating glass card with the model chip, usage limits, context ring and Send/Stop,
 // and the banner attached on top of it while Claude asks something, whose options you can pick from here.
 // The page above hears 'sent' on `el` after a message goes out, so it can scroll to the end.
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
 // From ChatComposer, ComposerControl, ComposerPendingApprovalPanel, ComposerPendingApprovalActions,
-// ComposerPendingUserInputPanel, ComposerPrimaryActions and ContextWindowMeter.
-import { api, h, icon, menu, meterView } from './ui.js';
+// ComposerPendingUserInputPanel, ComposerPrimaryActions, ContextWindowMeter, ComposerUsageLimits (LimitWindows)
+// and UsageLimitRecoveryBanner.
+import { api, h, icon, menu, money, on } from './ui.js';
 
 // Control characters out (newlines and tabs stay), so a paste can't end the paste brackets early (as lib/sessions.mjs does).
 const CONTROL = /\x1b|[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
@@ -47,6 +48,46 @@ const svg = (tag, attrs) => {
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
   return el;
 };
+// T3's numbers: tokens as "950", "8.5k", "145k", "1.2m" (formatContextWindowTokens); a percentage with one decimal
+// under 10 (ContextWindowMeter); a time left as "2d 4h", "3h 12m", "8m" (formatDuration).
+const tokens = n => (n < 1_000 ? `${Math.round(n)}` : n < 10_000 ? `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`
+  : n < 999_500 ? `${Math.round(n / 1_000)}k` : `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`);
+const percent = v => (v < 10 ? `${v.toFixed(1).replace(/\.0$/, '')}%` : `${Math.round(v)}%`);
+const MINUTE = 60_000;
+const duration = ms => {
+  const d = Math.floor(ms / (1440 * MINUTE)), hr = Math.floor(ms / (60 * MINUTE)) % 24, m = Math.floor(ms / MINUTE) % 60;
+  return d ? `${d}d ${hr}h` : hr ? `${hr}h ${m}m` : `${m}m`;
+};
+const resetsIn = (at, now) => (at - now < MINUTE ? 'Resets momentarily' : `resets in ${duration(at - now)}`);
+
+// Your plan's usage limits (noteLimits in lib/sessions.mjs): the account's, so one copy for every composer.
+// Each composer redraws when they change and every 30s, as "resets in" counts down and a window past its reset goes.
+// ponytail: a closed chat's redraw stays in the set (it skips itself once detached); prune it if panes churn by the thousand.
+const LIMITS = [['session', 'Session', 5 * 60], ['weekly', 'Weekly', 7 * 24 * 60]];
+let limits = {};
+const redraws = new Set();
+const setLimits = next => { limits = next ?? {}; redraws.forEach(f => f()); };
+on('limits', e => setLimits(e.limits));
+setInterval(() => redraws.forEach(f => f()), 30_000);
+// Windows still running, with their label, length in minutes, % used and reset time (if Claude sent one).
+const liveLimits = now => LIMITS.map(([key, label, mins]) => ({ key, label, mins, ...limits[key] }))
+  .filter(w => w.used !== undefined && !(w.resetsAt <= now));
+
+// T3's popover over a footer control: opens on hover (after 150ms, in CSS) or focus, and a second click closes it.
+let pops = 0;
+function popover(button, ...content) {
+  const pop = h('div', { class: 'chat-pop', id: `chat-pop-${++pops}`, role: 'tooltip' }, ...content);
+  button.setAttribute('aria-describedby', pop.id);
+  let open = false;
+  button.addEventListener('pointerdown', () => { open = button.matches(':focus'); });
+  button.addEventListener('click', () => open && button.blur());
+  const wrap = h('span', { class: 'chat-pop-wrap', hidden: true, onKeydown: e => {
+    if (e.key === 'Escape' && wrap.contains(document.activeElement)) { e.stopPropagation(); document.activeElement.blur(); }
+  } }, button, pop);
+  return { wrap, pop };
+}
+const popRow = (label, value) => h('div', { class: 'chat-pop-row' }, h('span', {}, label), h('span', { class: 'chat-pop-num' }, value));
+
 // The model chip's menu: what `/model <id>` switches the running Claude to.
 const MODELS = [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
 const modelName = id => MODELS.find(([m]) => m === id)?.[1] ?? 'Default model';
@@ -67,7 +108,13 @@ export function composer(p) {
   const arc = svg('circle', { cx: 12, cy: 12, r: R, class: 'chat-ring-arc', 'stroke-dasharray': CIRCLE, 'stroke-dashoffset': CIRCLE });
   const rings = svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
   rings.append(svg('circle', { cx: 12, cy: 12, r: R, class: 'chat-ring-track' }), arc);
-  const ring = h('span', { class: 'chat-ring', role: 'img', tabindex: 0, hidden: true }, rings);
+  const meterPct = h('span', { class: 'chat-meter-pct' });
+  const meterButton = h('button', { type: 'button', class: 'chat-meter' }, h('span', { class: 'chat-ring' }, rings), meterPct);
+  const meter = popover(meterButton);
+  const limitsText = h('span', { class: 'chat-limits-text' });
+  const limitsButton = h('button', { type: 'button', class: 'chat-control chat-limits' }, icon('gauge', 14), limitsText);
+  const usage = popover(limitsButton);
+  const limitBanner = h('div', { class: 'chat-dock chat-limit', role: 'status', hidden: true });
   const modelLabel = h('span', {}, modelName(model));
   const chip = h('button', { type: 'button', class: 'chat-control', 'aria-haspopup': 'menu', title: 'Model', onClick: () => pickModel() },
     modelLabel, icon('chevronDown', 14));
@@ -76,8 +123,46 @@ export function composer(p) {
   const send = h('button', { type: 'button', class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send message', disabled: true, onClick: () => submit(),
     innerHTML: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' });
   const card = h('div', { class: 'chat-card' }, input,
-    h('div', { class: 'chat-controls' }, chip, h('span', { class: 'grow' }), ring, stop, send));
-  const el = h('div', { class: 'chat-composer' }, h('div', { class: 'chat-composer-lane' }, dock, card));
+    h('div', { class: 'chat-controls' }, chip, h('span', { class: 'grow' }), usage.wrap, meter.wrap, stop, send));
+  const el = h('div', { class: 'chat-composer' }, h('div', { class: 'chat-composer-lane' }, limitBanner, dock, card));
+
+  // The usage-limits control: "Session 23% · resets in 2h 5m · Weekly 41%" (used), T3's LimitWindows (left) over it,
+  // and its "Usage limit reached" banner on the card while a window is used up. Nothing at all before any limits
+  // came in, as for an API key, which has none.
+  function drawLimits() {
+    if (!el.isConnected && limitsText.textContent) return;
+    const now = Date.now();
+    const windows = liveLimits(now);
+    usage.wrap.hidden = !windows.length;
+    limitsButton.classList.toggle('bad', windows.some(w => w.used > 90));
+    limitsText.replaceChildren(...windows.flatMap((w, i) => [i > 0 && h('span', { class: 'chat-limits-more' }, ' · '),
+      h('span', { class: i > 0 ? 'chat-limits-more' : '' }, `${w.label} ${Math.round(w.used)}%`),
+      i === 0 && w.resetsAt && h('span', { class: 'chat-limits-more' }, ` · ${resetsIn(w.resetsAt, now)}`)]).filter(Boolean));
+    limitsButton.setAttribute('aria-label', `Usage limits: ${windows.map(w => `${w.label} ${Math.round(w.used)}% used${w.resetsAt ? `, ${resetsIn(w.resetsAt, now)}` : ''}`).join('; ')}`);
+    usage.pop.replaceChildren(
+      h('div', { class: 'chat-pop-head' }, icon('gauge', 14), h('span', {}, 'Usage limits'), h('span', { class: 'chat-pop-num' }, 'Claude Code')),
+      h('div', { class: 'chat-limit-grid' }, windows.flatMap(w => {
+        const left = Math.round(100 - w.used);
+        // Where even spending would be: the share of the window's time still to run (T3's pace mark).
+        const timeLeft = w.resetsAt ? Math.max(0, Math.min(100, Math.round((w.resetsAt - now) * 100 / (w.mins * MINUTE)))) : null;
+        return [
+          h('span', { class: 'chat-limit-label' }, h('span', {}, w.label), h('b', {}, `${left}% left`)),
+          h('span', { class: 'chat-limit-bar', role: 'img', 'aria-label': `${w.label}: ${left}% left${w.resetsAt ? `, ${resetsIn(w.resetsAt, now)}` : ''}`,
+            title: w.resetsAt ? `Resets ${new Date(w.resetsAt).toLocaleString()}` : '' },
+            h('span', { class: 'chat-limit-fill', style: `width: ${left}%` }),
+            timeLeft !== null && h('span', { class: 'chat-limit-pace', style: `left: clamp(3px, ${timeLeft}%, calc(100% - 3px))` })),
+          h('span', { class: 'chat-limit-reset' }, w.resetsAt ? resetsIn(w.resetsAt, now) : ''),
+        ];
+      })));
+    const out = windows.find(w => w.used >= 100);
+    limitBanner.hidden = !out;
+    if (out) limitBanner.replaceChildren(h('div', { class: 'chat-dock-row' },
+      h('span', { class: 'chat-dock-icon', 'aria-hidden': 'true' }, icon('gauge', 16)),
+      h('span', { class: 'chat-dock-main' }, h('span', { class: 'chat-dock-title' }, 'Usage limit reached'),
+        h('span', { class: 'chat-limit-when' }, out.resetsAt ? `Resets ${new Date(out.resetsAt).toLocaleString()}` : 'Reset time unavailable; retry manually'))));
+  }
+  redraws.add(drawLimits);
+  api('GET', '/api/limits').then(setLimits, () => {});
 
   // Keys 1–9 pick an option while focus is anywhere in this chat view but a text field (chat.js listens on the view,
   // so a closed pane takes its listener with it). They go through /choose, never into the terminal: the server
@@ -189,15 +274,31 @@ export function composer(p) {
       render(up ? panelOf(menu, pending) : null);
       if (had && up) focus();
     },
-    // The pane's context meter (meterView in ui.js) as a ring: dim, amber over 70%, full text colour over 90%.
+    // The pane's context meter (meter() in lib/sessions.mjs) as T3's ring, with its % beside it: dim, red over 90%.
+    // Its popover has T3's "Context Window" card, plus the tokens so far by type.
     setMeter(m) {
-      ring.hidden = !m;
+      meter.wrap.hidden = !m;
       if (!m) return;
-      const v = meterView(m);
-      arc.setAttribute('stroke-dashoffset', CIRCLE * (1 - Math.min(v.pct, 100) / 100));
-      ring.className = `chat-ring ${v.level}`;
-      ring.title = v.details;
-      ring.setAttribute('aria-label', `Context window ${v.pct}% used${v.cost && `, ${v.cost} so far`}`);
+      const pct = m.used * 100 / m.effective;
+      const fill = Math.max(0, Math.min(100, pct));
+      const t = m.tokens;
+      const priced = m.cost > 0 || !m.unpriced;
+      arc.setAttribute('stroke-dashoffset', CIRCLE * (1 - fill / 100));
+      meterButton.classList.toggle('bad', fill > 90);
+      meterPct.textContent = percent(pct);
+      meterButton.setAttribute('aria-label', `Context window ${percent(pct)} used`);
+      const compact = h('button', { type: 'button', class: 'btn xs chat-pop-action', disabled: input.disabled, onClick: () => { document.activeElement.blur(); type('/compact'); } },
+        icon('minimize', 12), 'Compact context');
+      meter.pop.replaceChildren(...[
+        h('div', { class: 'chat-pop-head' }, h('span', {}, 'Context Window'), h('span', { class: 'chat-pop-num' }, `${percent(pct)} · ${tokens(m.used)}/${tokens(m.effective)}`)),
+        h('div', { class: 'chat-pop-bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(fill), 'aria-label': 'Context window usage' },
+          h('span', { style: `width: ${fill}%` })),
+        popRow('Total processed', tokens(t.input + t.output + t.read + t.write)),
+        popRow('Input · output', `${tokens(t.input)} · ${tokens(t.output)}`),
+        popRow('Cache read · write', `${tokens(t.read)} · ${tokens(t.write)}`),
+        priced && popRow('Cost', `${money(m.cost)} (API list prices)`),
+        h('div', { class: 'chat-pop-note' }, `Compacts automatically at about ${m.effective.toLocaleString('en-US')} tokens.`),
+        compact].filter(Boolean));
     },
   };
 

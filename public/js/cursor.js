@@ -26,7 +26,7 @@ let lastFrame = 0;
 let raf = 0;
 
 const motionOk = () => !matchMedia('(prefers-reduced-motion: reduce)').matches && matchMedia('(pointer: fine)').matches;
-const apply = () => document.documentElement.classList.toggle('fancy-cursor', state.settings.fancyCursor !== false && motionOk());
+const apply = () => document.documentElement.classList.toggle('fancy-cursor', state.settings.fancyCursor === true && motionOk());
 on('settings', apply);
 apply();
 

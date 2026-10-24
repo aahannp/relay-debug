@@ -116,7 +116,7 @@ function showView(id) {
 actions.showView = showView;
 actions.currentView = () => current;
 
-// The top bar: on the left a view's own title() (a breadcrumb) or else its icon, name and hint; on the right its toolbar().
+// The top bar: on the left a view's own title() (a breadcrumb) or else its name and hint; on the right its toolbar().
 const crumbs = [...$('crumbs').children];
 function renderToolbar() {
   const view = VIEWS.find(v => v.id === current);
@@ -125,7 +125,6 @@ function renderToolbar() {
   if (title) $('crumbs').replaceChildren(...[title].flat());
   else {
     $('crumbs').replaceChildren(...crumbs);
-    $('viewIcon').replaceChildren(icon(view.icon, 16));
     $('viewTitle').textContent = view.label;
     $('viewHint').textContent = view.hint;
   }
@@ -184,24 +183,27 @@ const setSideWidth = w => document.documentElement.style.setProperty('--side-w',
 setSideWidth(savedWidth());
 addEventListener('resize', () => setSideWidth(savedWidth()));
 const rail = h('div', {
-  class: 'side-rail', title: 'Drag to resize sidebar', 'aria-hidden': 'true',
+  class: 'side-rail', title: 'Drag to resize, click to hide the sidebar', 'aria-hidden': 'true',
   onPointerdown: e => {
     if (e.button !== 0) return;
     e.preventDefault();
     const app = document.querySelector('.app');
     const from = side.offsetWidth - e.clientX;
+    let moved = false; // a click without a drag hides the sidebar, as T3's rail
     const move = ev => {
+      moved ||= Math.abs(ev.clientX - e.clientX) > 3;
+      if (!moved) return;
       setSideWidth(from + ev.clientX);
       try { localStorage.setItem(SIDE_W, String(fitWidth(from + ev.clientX))); } catch {}
     };
     rail.setPointerCapture(e.pointerId);
     app.classList.add('side-resizing');
     rail.addEventListener('pointermove', move);
-    rail.addEventListener('lostpointercapture', () => { rail.removeEventListener('pointermove', move); app.classList.remove('side-resizing'); }, { once: true });
-  },
-  onDblclick: () => {
-    try { localStorage.removeItem(SIDE_W); } catch {}
-    setSideWidth(256);
+    rail.addEventListener('lostpointercapture', () => {
+      rail.removeEventListener('pointermove', move);
+      app.classList.remove('side-resizing');
+      if (!moved) toggleSidebar();
+    }, { once: true });
   },
 });
 
@@ -270,25 +272,31 @@ function openSession(s) {
   }
   actions.focusSession(s.id);
 }
+// T3 cuts a long branch in the middle, so its start and its end both show.
+const midCut = (t, n = 24) => (t.length > n ? `${t.slice(0, n / 2 - 1)}…${t.slice(1 - n / 2)}` : t);
+const STATUS_ICON = { working: 'circleDashed', 'needs-input': 'messageCircleQuestion' }; // T3's status icons
 const who = s => s.specialist?.name ?? (s.role === 'lead' ? 'Lead' : s.kind === 'shell' ? 'Shell' : s.kind === 'browser' ? 'Browser' : state.agents.find(a => a.id === s.agent)?.name ?? s.agent);
 
 // An open thread: T3's card row. Project and status on top, the title, then who runs it and on which branch.
+// On hover the status gives way to Settle, which closes the thread onto the Settled shelf.
 function cardRow(s) {
   const status = actions.statusOf?.(s) ?? s.status;
   const off = actions.isHidden?.(s.id);
   const name = projectName(s.project);
   const current = actions.focusedSession?.() === s.id;
   const loud = status === 'working' || status === 'needs-input';
-  return h('button', {
+  const card = h('button', {
     class: `thread thread-card${current ? ' current' : ''}${off ? ' off' : ''}`, 'data-key': `s:${s.id}`, 'aria-current': current ? 'true' : null,
     'aria-label': `${chatTitle(s)}, ${name}, ${STATUS_LABEL[status] ?? status}${off ? ', hidden from the grid' : ''}`,
     title: off ? 'Hidden from the grid. Click to show it.' : s.cwd, draggable: true, onDragstart: drag(DRAG.pane, s.id),
     onClick: () => openSession(s), onContextmenu: e => chatMenu(e, chatOf(s)),
   },
     h('span', { class: 'thread-top' }, monogram(name), h('span', { class: 'thread-project' }, name),
-      h('span', { class: `thread-status ${status}` }, h('span', { class: `dot ${status}` }), loud ? STATUS_LABEL[status] : since(chatOf(s)?.lastActiveAt ?? s.startedAt))),
+      h('span', { class: `thread-status ${status}` }, loud ? [icon(STATUS_ICON[status], 16), STATUS_LABEL[status]] : since(chatOf(s)?.lastActiveAt ?? s.startedAt))),
     h('span', { class: 'thread-title' }, s.kind === 'shell' && icon('terminal', 13), h('span', {}, chatTitle(s))),
-    h('span', { class: 'thread-meta' }, h('span', {}, who(s)), s.worktree?.branch && h('span', { class: 'thread-branch' }, icon('branch', 11), h('span', {}, s.worktree.branch)), off && icon('eyeOff', 12)));
+    h('span', { class: 'thread-meta' }, h('span', {}, who(s)), s.worktree?.branch && h('span', { class: 'thread-branch', title: s.worktree.branch }, icon('branch', 11), h('span', {}, midCut(s.worktree.branch))), off && icon('eyeOff', 12)));
+  return h('div', { class: 'thread-row' }, card,
+    h('button', { class: 'thread-settle', 'data-key': `settle:${s.id}`, 'aria-label': 'Settle thread', title: 'Settle thread', onClick: () => actions.closePane(s.id) }, icon('check', 14), 'Settle'));
 }
 // A slim row: an open thread on a shelf or in search results, or a closed one you can pick up again.
 function slimSession(s) {
@@ -414,7 +422,7 @@ const footIcon = (name, label, onClick) => h('button', { class: 'icon-btn side-i
 function moreMenu(anchor) {
   const go = (id, ic) => ({ label: VIEWS.find(v => v.id === id).label, icon: ic, sub: `⌘${VIEWS.findIndex(v => v.id === id) + 1}`, onClick: () => showView(id) });
   menu(anchor, [
-    go('review', 'branch'), go('files', 'file'), go('artifacts', 'layers'), go('shots', 'camera'), go('graph', 'graph'),
+    go('board', 'board'), go('review', 'branch'), go('files', 'file'), go('artifacts', 'layers'), go('shots', 'camera'), go('graph', 'graph'),
     'sep',
     state.layout === 'thread' ? { label: 'Grid view', icon: 'layoutGrid', onClick: () => actions.setLayout('grid') } : { label: 'Thread view', icon: 'squareMenu', onClick: () => actions.setLayout('thread') },
     { label: 'Voice input', icon: 'mic', sub: '⌘⇧M', onClick: () => actions.toggleVoice() },
@@ -422,11 +430,27 @@ function moreMenu(anchor) {
   ]);
 }
 const footer = () => (current === 'agents' ? [
-  footIcon('settings', 'Settings', () => showView('settings')),
-  footIcon('board', 'Board', () => showView('board')),
-  footIcon('chartBar', 'Usage', () => showView('spend')),
+  footIcon('settingsGear', 'Settings', () => showView('settings')),
+  footIcon('chartNoAxesColumn', 'Usage', () => showView('spend')),
   footIcon('dots', 'More', e => moreMenu(e.currentTarget)),
 ] : [h('button', { class: 'side-row side-back', 'data-key': 'foot:back', onClick: () => showView('agents') }, icon('arrowLeft', 16), h('span', {}, 'Back'))]);
+
+// T3's scroll fade: the list fades out at whichever end has more to scroll to.
+const fade = () => {
+  const { scrollTop, scrollHeight, clientHeight } = sideBody;
+  sideBody.classList.toggle('fade-top', scrollTop > 0);
+  sideBody.classList.toggle('fade-bottom', scrollTop + clientHeight < scrollHeight - 1);
+};
+sideBody.addEventListener('scroll', fade, { passive: true });
+// Up and Down walk the thread rows; Up from the first goes back to the search box.
+sideBody.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const rows = [...sideBody.querySelectorAll('.thread')];
+  const i = rows.indexOf(e.target);
+  if (i < 0) return;
+  e.preventDefault();
+  (e.key === 'ArrowUp' && i === 0 ? search : rows[i + (e.key === 'ArrowDown' ? 1 : -1)])?.focus();
+});
 
 // This runs every second: rebuild only when what it shows changed (a rebuild mid-click loses the click), keeping focus.
 let sideShown = '';
@@ -437,7 +461,7 @@ function renderSide() {
   const body = current === 'settings' ? settingsNav() : threadList();
   const foot = footer();
   const html = [...body, ...foot].map(n => n.outerHTML).join('');
-  if (html === sideShown) return;
+  if (html === sideShown) return fade();
   sideShown = html;
   const focused = side.contains(document.activeElement) ? document.activeElement.dataset.key : null;
   const scrolled = sideBody.scrollTop;
@@ -445,6 +469,7 @@ function renderSide() {
   sideFoot.replaceChildren(...foot, verWrap);
   sideBody.scrollTop = scrolled;
   if (focused) side.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+  fade();
 }
 
 // The search row: T3's SidebarThreadHeader. Search, then the project filter, Add project and New thread.
@@ -454,6 +479,7 @@ const search = h('input', {
   onKeydown: e => {
     if (e.key === 'Escape' && search.value) { e.preventDefault(); e.stopPropagation(); clear(); }
     else if (e.key === 'Enter') sideBody.querySelector('.thread')?.click();
+    else if (e.key === 'ArrowDown') { e.preventDefault(); sideBody.querySelector('.thread')?.focus(); }
   },
 });
 const clear = () => { search.value = ''; query = ''; clearSearch.hidden = true; renderSide(); };
@@ -473,7 +499,7 @@ function renderHead() {
   if (filterBtn.title !== label) {
     filterBtn.title = label;
     filterBtn.setAttribute('aria-label', label);
-    filterBtn.replaceChildren(name ? monogram(name) : icon('list', 16));
+    filterBtn.replaceChildren(name ? monogram(name) : icon('listFilter', 16));
   }
 }
 
@@ -494,10 +520,18 @@ function projectMenu(anchor) {
     class: `menu-item${scoped() === path ? ' sel' : ''}`, role: 'menuitemradio', 'aria-checked': String(scoped() === path), title: hint,
     onClick: e => pick(path, e), onContextmenu: e => path && spaceMenu(e, state.projects.find(p => p.path === path)),
   }, glyph, h('span', { class: 'grow' }, label), path && open.includes(path) && open.length > 1 && h('span', { class: 'sub', title: 'In the grid' }, icon('stack', 12)), scoped() === path && icon('check', 14));
+  const rows = state.projects.map(p => item(p.path, p.name, monogram(p.name), `${ltr(p.path.replace(state.info.home, '~'))}\n⌘-click to show it beside the others in the grid`));
+  // T3's filter has a search box: it narrows the projects, Down goes into the list.
+  const find = h('input', {
+    class: 'side-search-input side-projects-find', type: 'search', placeholder: 'Search projects', 'aria-label': 'Search projects', spellcheck: false,
+    onInput: () => { const q = find.value.trim().toLowerCase(); rows.forEach((row, i) => { row.hidden = Boolean(q) && !state.projects[i].name.toLowerCase().includes(q); }); },
+    onKeydown: e => e.key === 'ArrowDown' && (e.preventDefault(), m.querySelector('.menu-item:not([hidden])')?.focus()),
+  });
   const m = h('div', { class: 'menu side-projects', role: 'menu', 'aria-label': 'Filter threads by project' },
+    find,
     item('', 'All projects', icon('folder', 16)),
     h('div', { class: 'sep' }),
-    state.projects.map(p => item(p.path, p.name, monogram(p.name), `${ltr(p.path.replace(state.info.home, '~'))}\n⌘-click to show it beside the others in the grid`)));
+    rows);
   document.body.append(m);
   const r = anchor.getBoundingClientRect();
   m.style.top = `${Math.min(r.bottom + 6, innerHeight - m.offsetHeight - 8)}px`;
@@ -505,7 +539,7 @@ function projectMenu(anchor) {
   const outside = e => !m.contains(e.target) && !document.querySelector('.menu:not(.side-projects)')?.contains(e.target) && close();
   const esc = e => e.key === 'Escape' && (e.stopPropagation(), close());
   setTimeout(() => { document.addEventListener('mousedown', outside); document.addEventListener('keydown', esc, true); });
-  m.querySelector('.menu-item')?.focus();
+  find.focus();
 }
 
 function spaceMenu(e, p) {

@@ -9,7 +9,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 import { start } from './server.mjs';
 import { createWorktree } from './lib/git.mjs';
-import { db, bus, migrate } from './lib/store.mjs';
+import { db, bus, migrate, DEFAULTS as STORE_DEFAULTS } from './lib/store.mjs';
 import * as T from './lib/team.mjs';
 import { command, board, sessions, upkeep, effectiveWindow, claudeTheme, contrast, createSession, prose, onScreenPrompt, parseMenu, choose } from './lib/sessions.mjs';
 import headless from '@xterm/headless';
@@ -52,6 +52,10 @@ assert.deepEqual([migrated({ theme: 'midnight', accent: '#ff3ea5' }).theme, 'acc
 assert.equal(migrated({ theme: 'nord', accent: '' }).theme, 'nord', 'a theme you picked yourself stays');
 assert.deepEqual([migrated({ fancyCursor: true, cursorMigrated: false }).fancyCursor, migrated({ fancyCursor: true, cursorMigrated: false }).cursorMigrated], [false, true], 'an old saved cursor-on goes off once');
 assert.equal(migrated({ fancyCursor: true }).fancyCursor, true, 'turned on after that, it stays on');
+{ // Settings' "Reset to default" keeps its own copy of the defaults (it runs in the browser): it must match the store's
+  const src = fs.readFileSync(new URL('./public/js/settings.js', import.meta.url), 'utf8').match(/^const DEFAULTS = (\{[\s\S]*?\n\});/m)[1];
+  for (const [k, [, v]] of Object.entries(new Function(`return ${src}`)())) assert.deepEqual(v, STORE_DEFAULTS.settings[k], `settings.js default for ${k}`);
+}
 assert.equal(db.settings.fancyCursor, false, 'the custom cursor is off by default');
 assert.ok(desk.token.length >= 32, 'an empty token file is replaced with a real secret');
 assert.ok(!fs.existsSync(path.join(tmp, 'data', 'mcp', 'gone1234.json')), "a session's MCP file never outlives a restart");

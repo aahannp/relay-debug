@@ -75,6 +75,23 @@
 .thread.slim.gone { opacity: .45; cursor: default; }
 .thread.more { gap: 8px; font-size: 13px; color: color-mix(in srgb, var(--dim) 80%, transparent); }
 .thread.more:hover { color: var(--text); }
+/* Threads an agent started, under its row: an indented rail of slim rows, and a count on the row that folds them. */
+.thread-group { position: relative; flex-shrink: 0; display: flex; flex-direction: column; gap: 1px; }
+.thread-group > .thread-card .thread-meta { padding-right: 44px; }
+.thread-group > .thread.slim { padding-right: 52px; }
+.thread-kids-toggle { position: absolute; right: 8px; top: 54px; height: 20px; display: inline-flex; align-items: center; gap: 3px; padding: 0 5px; border: 0; border-radius: 6px; background: none;
+  font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.thread-group > .thread.slim + .thread-kids-toggle { top: 8px; }
+.thread-group > .thread.kid + .thread-kids-toggle { top: 5px; }
+.thread-kids-toggle:hover { color: var(--text); background: var(--softer); }
+.thread-kids-toggle .icon:last-child { transition: transform .15s; }
+.thread-kids-toggle[aria-expanded="false"] .icon:last-child { transform: rotate(-90deg); }
+.thread-kids { display: flex; flex-direction: column; gap: 1px; margin-left: 14px; padding-left: 6px; border-left: 1px solid color-mix(in srgb, var(--hair) 70%, transparent); }
+.thread.slim.kid { height: 30px; gap: 8px; padding-left: 8px; }
+.thread.slim.kid .thread-title { font-size: 13px; }
+.thread.slim.kid.settled { opacity: .55; }
+.thread.slim.kid.settled:is(:hover, :focus-visible) { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .thread-kids-toggle .icon:last-child { transition: none; } }
 /* T3's ProjectMonogram: a 16px square tinted by its own text colour. */
 .monogram { width: 16px; height: 16px; flex-shrink: 0; display: inline-grid; place-items: center; border-radius: 4px; background: color-mix(in srgb, currentColor 14%, transparent); font: 700 8.25px var(--mono); color: var(--text); }
 .shelves { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 8px; }

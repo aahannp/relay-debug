@@ -38,10 +38,13 @@
 .chat-note code { color: var(--text); }
 
 /* The work log (T3 WorkLog): 24px rows of tool icon, muted 14px label, chevron at the far right; a group of two or more is one such row that opens to the entries. */
-.chat-group-head, .chat-fold > summary { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 2px; border: 0; border-radius: 8px;
+.chat-group-head, .chat-fold > summary, .chat-sub { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 2px; border: 0; border-radius: 8px;
   background: none; color: var(--dim); font: inherit; font-size: 14px; line-height: 1.625; text-align: left; cursor: pointer; list-style: none; }
-.chat-group-head:hover, .chat-fold > summary:hover { color: var(--text); }
-.chat-group-head:focus-visible, .chat-fold > summary:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: -2px; }
+.chat-group-head:hover, .chat-fold > summary:hover, .chat-sub:not(:disabled):hover { color: var(--text); }
+.chat-group-head:focus-visible, .chat-fold > summary:focus-visible, .chat-sub:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: -2px; }
+.chat-sub:disabled { cursor: default; }
+.chat-sub:disabled .chat-chevron { opacity: 0; } /* a link only once it has somewhere to go */
+.chat-group.many .chat-sub { padding-block: 0; }
 .chat-fold > summary::-webkit-details-marker { display: none; }
 .chat-tool-icon { flex: none; display: flex; color: var(--dim); }
 .chat-chevron { flex: none; display: flex; justify-content: center; width: 16px; margin-left: auto; opacity: .7; transition: transform .2s; }

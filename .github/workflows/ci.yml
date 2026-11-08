@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     env:
       # Relay's shells and npm run check expect the user's shell to be zsh
@@ -38,7 +38,7 @@ jobs:
       - run: npm run check
 
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'

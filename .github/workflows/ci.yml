@@ -49,6 +49,10 @@ jobs:
           node-version: '22.23.3'
           cache: npm
       - run: npm ci
+      # GitHub's release downloads sometimes return 504 for a while; retry so a blip doesn't fail the build.
+      # It fills the shared Electron cache, so build:art and electron-builder reuse it.
+      - name: Download Electron
+        run: for i in 1 2 3 4 5 6 7 8; do node node_modules/electron/install.js && exit 0; sleep 60; done; exit 1
       # Same steps as the release build, but packs the .app only (no DMG) to stay quick
       - run: npm run build:native
       - run: npm run build:art

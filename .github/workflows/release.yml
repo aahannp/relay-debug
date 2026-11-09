@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
@@ -43,6 +43,10 @@ jobs:
 
       - run: npm ci
       - run: npm run check
+      # GitHub's release downloads sometimes return 504 for a while; retry so a blip doesn't fail the build.
+      # It fills the shared Electron cache, so build:art and electron-builder reuse it.
+      - name: Download Electron
+        run: for i in 1 2 3 4 5 6 7 8; do node node_modules/electron/install.js && exit 0; sleep 60; done; exit 1
       # --publish never: electron-builder would otherwise publish by itself on a tag build in CI
       # The early-access repo builds "Relay Debug" from the same commits; every other repo builds Relay.
       - name: Build

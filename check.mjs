@@ -19,6 +19,7 @@ import { priceReply } from './lib/usage.mjs';
 import * as U from './lib/update.mjs';
 import { parseMarkdown, meterView } from './public/js/ui.js';
 import { stripDeskCookies } from './lib/cookies.mjs';
+import { installWorkflow } from './lib/quick-action.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-desk-check-')));
@@ -2106,6 +2107,19 @@ esac
     assert.deepEqual([trust.kind, trust.options.map(o => o.label)], ['menu', ['No, exit', 'Yes, I trust this folder']], 'the trust dialog, with no pending tool, is a plain menu');
     assert.equal(panelOf(null, null).kind, 'terminal', "a menu that couldn't be read sends you to the terminal");
     assert.ok(!/var\(--accent/.test(fs.readFileSync(new URL('./public/composer.css', import.meta.url), 'utf8')), 'the composer never uses the pink accent');
+  }
+  { // Finder's Open in Relay Quick Action: valid plists, written once, rewritten when it changes, nothing else touched
+    const services = path.join(tmp, 'Services');
+    fs.mkdirSync(services);
+    fs.writeFileSync(path.join(services, 'Mine.workflow'), 'yours');
+    const install = id => installWorkflow({ servicesDir: services, title: 'Open in Relay & Co', bundleId: id });
+    assert.deepEqual([install('com.example.a'), install('com.example.a'), install('com.example.b')], [true, false, true], 'installs only when missing or different');
+    const contents = path.join(services, 'Open in Relay & Co.workflow', 'Contents');
+    for (const name of ['Info.plist', 'document.wflow']) execFileSync('plutil', ['-lint', '-s', path.join(contents, name)]);
+    const info = JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', path.join(contents, 'Info.plist')]));
+    assert.deepEqual([info.NSServices[0].NSMenuItem.default, info.NSServices[0].NSSendFileTypes], ['Open in Relay & Co', ['public.folder']]);
+    assert.match(fs.readFileSync(path.join(contents, 'document.wflow'), 'utf8'), /open -b com\.example\.b "\$@"/);
+    assert.deepEqual(fs.readdirSync(services).sort(), ['Mine.workflow', 'Open in Relay & Co.workflow'], 'leaves other services alone');
   }
   console.log('All checks passed');
 } finally {

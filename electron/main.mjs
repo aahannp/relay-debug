@@ -2,8 +2,10 @@
 import { app, BrowserWindow, Menu, desktopCapturer, dialog, session, shell } from 'electron';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { stripDeskCookies } from '../lib/cookies.mjs';
+import { installWorkflow } from '../lib/quick-action.mjs';
 
 const ROOT = path.dirname(import.meta.dirname);
 let server;
@@ -42,16 +44,50 @@ function createWindow({ from, project } = {}) {
     event.preventDefault();
     openOutside(url);
   });
+  win.startProject = project; // what projectOf() says until the page has loaded
   const url = new URL(server.url); // the URL start() returns: it carries the login token
   if (project) url.searchParams.set('project', project);
   win.loadURL(url.href);
 }
 
+const projectOf = win => { try { return new URL(win.webContents.getURL()).searchParams.get('project'); } catch { return win.startProject; } };
+
 // A new window opens on the project of the window you opened it from (each page keeps it in its ?project=).
 function newWindow() {
   const from = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-  const project = from && new URL(from.webContents.getURL()).searchParams.get('project');
-  createWindow({ from, project });
+  createWindow({ from, project: from && projectOf(from) });
+}
+
+// A folder from Finder (the Open in Relay Quick Action, `open -a Relay <folder>` or a drop on the Dock icon):
+// add it as a space if it isn't one, then focus the window showing it or open a new one, like VS Code.
+async function openFolder(folder) {
+  const res = await fetch(new URL('/api/projects', server.url), {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-desk-token': server.token }, body: JSON.stringify({ path: folder }),
+  });
+  const body = await res.json();
+  // Not showErrorBox: it blocks the main process, where the server and so every agent runs.
+  if (!res.ok) return void dialog.showMessageBox({ type: 'error', message: `${APP_NAME} couldn't open that`, detail: body.error ?? res.statusText });
+  // The window on that space, or still loading it; else any window, if the space is open beside another (openSpaces is shared).
+  const settings = await fetch(new URL('/api/settings', server.url), { headers: { 'x-desk-token': server.token } }).then(r => r.json());
+  const wins = BrowserWindow.getAllWindows();
+  const win = wins.find(w => projectOf(w) === body.path) ?? (settings.openSpaces?.includes(body.path) ? BrowserWindow.getFocusedWindow() ?? wins[0] : null);
+  if (!win) return createWindow({ project: body.path });
+  if (win.isMinimized()) win.restore();
+  win.focus();
+}
+// open-file can arrive before the server is up (a cold start from Finder): hold those until boot() is done.
+let opened = [];
+app.on('open-file', (event, folder) => {
+  event.preventDefault();
+  if (opened) opened.push(folder); else openFolder(folder).catch(e => console.error(`Couldn't open ${folder}:`, e.message));
+});
+
+// Puts the Quick Action in ~/Library/Services (only our own .workflow) and tells Finder when it changed.
+function installQuickAction() {
+  const plist = fs.readFileSync(path.join(process.resourcesPath, '..', 'Info.plist'), 'utf8');
+  const bundleId = plist.match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)</)[1];
+  const servicesDir = path.join(os.homedir(), 'Library', 'Services');
+  if (installWorkflow({ servicesDir, title: `Open in ${APP_NAME}`, bundleId })) execFile('/System/Library/CoreServices/pbs', ['-update'], () => {});
 }
 
 async function boot() {
@@ -63,12 +99,16 @@ async function boot() {
     dataDir: app.getPath('userData'),
     voiceHelper: app.isPackaged ? path.join(process.resourcesPath, 'desk-listen') : path.join(ROOT, 'native/build/desk-listen'),
   };
-  server = await start({ ...options, port: DEBUG ? 4849 : 4848 }).catch(e => {
+  const own = Number(process.env.RELAY_PORT); // for testing beside a running Relay; anything but a valid port is ignored
+  server = await start({ ...options, port: Number.isInteger(own) && own > 0 && own < 65536 ? own : DEBUG ? 4849 : 4848 }).catch(e => {
     if (e.code !== 'EADDRINUSE') throw e;
     return start({ ...options, port: 0 }); // the port is taken, so take any free port
   });
   update = await import('../lib/update.mjs');
   if (app.isPackaged) update.auto({ dataDir: options.dataDir, quit: () => app.quit() }); // never from `npm run app`'s Electron
+  if (app.isPackaged) {
+    try { installQuickAction(); } catch (e) { console.error("Couldn't install the Finder Quick Action:", e.message); }
+  }
 
   // Electron grants every page every permission unless told otherwise, and browser panes frame other
   // websites. So deny by default, and give Relay's own top-level page only what it uses.
@@ -105,7 +145,11 @@ async function boot() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([{ role: 'appMenu' }, { label: 'File', submenu: [newItem, { type: 'separator' }, { role: 'close' }] },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }]));
   app.dock?.setMenu(Menu.buildFromTemplate([{ label: 'New Window', click: newWindow }]));
-  createWindow();
+  const folders = opened;
+  opened = null;
+  if (!folders.length) return createWindow();
+  for (const folder of folders) await openFolder(folder).catch(e => console.error(`Couldn't open ${folder}:`, e.message));
+  if (!BrowserWindow.getAllWindows().length) createWindow(); // every folder failed: still show Relay
 }
 
 // Relay was called Agent Desk: keep using its data folder (board, chats, settings, login) when one exists.
@@ -125,7 +169,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   // Mac convention: closing the window keeps the app and its agents running; the Dock icon reopens it.
   app.on('window-all-closed', () => {});
-  app.on('activate', () => server && !BrowserWindow.getAllWindows().length && createWindow());
+  app.on('activate', () => server && !opened && !BrowserWindow.getAllWindows().length && createWindow());
   // A quit you chose installs a downloaded update; the new version opens next time you open Relay.
   app.on('will-quit', () => {
     server?.close();

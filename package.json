@@ -64,7 +64,15 @@
       "notarize": false,
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Relay listens to your voice so you can talk to your agents instead of typing.",
-        "NSSpeechRecognitionUsageDescription": "Relay turns your speech into text on this Mac so you can talk to your agents."
+        "NSSpeechRecognitionUsageDescription": "Relay turns your speech into text on this Mac so you can talk to your agents.",
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Folder",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["public.folder"]
+          }
+        ]
       },
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"

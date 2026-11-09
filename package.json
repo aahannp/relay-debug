@@ -1,7 +1,7 @@
 {
   "name": "agent-desk",
   "productName": "Relay",
-  "version": "1.12.3",
+  "version": "1.12.4",
   "description": "Run many Claude Code agents side by side",
   "private": true,
   "type": "module",
@@ -70,7 +70,9 @@
             "CFBundleTypeName": "Folder",
             "CFBundleTypeRole": "Viewer",
             "LSHandlerRank": "Alternate",
-            "LSItemContentTypes": ["public.folder"]
+            "LSItemContentTypes": [
+              "public.folder"
+            ]
           }
         ]
       },

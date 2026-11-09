@@ -44,12 +44,13 @@ function createWindow({ from, project } = {}) {
     event.preventDefault();
     openOutside(url);
   });
+  win.startProject = project; // what projectOf() says until the page has loaded
   const url = new URL(server.url); // the URL start() returns: it carries the login token
   if (project) url.searchParams.set('project', project);
   win.loadURL(url.href);
 }
 
-const projectOf = win => { try { return new URL(win.webContents.getURL()).searchParams.get('project'); } catch { return null; } };
+const projectOf = win => { try { return new URL(win.webContents.getURL()).searchParams.get('project'); } catch { return win.startProject; } };
 
 // A new window opens on the project of the window you opened it from (each page keeps it in its ?project=).
 function newWindow() {
@@ -64,8 +65,12 @@ async function openFolder(folder) {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-desk-token': server.token }, body: JSON.stringify({ path: folder }),
   });
   const body = await res.json();
-  if (!res.ok) return dialog.showErrorBox(`${APP_NAME} couldn't open that`, body.error ?? res.statusText);
-  const win = BrowserWindow.getAllWindows().find(w => projectOf(w) === body.path);
+  // Not showErrorBox: it blocks the main process, where the server and so every agent runs.
+  if (!res.ok) return void dialog.showMessageBox({ type: 'error', message: `${APP_NAME} couldn't open that`, detail: body.error ?? res.statusText });
+  // The window on that space, or still loading it; else any window, if the space is open beside another (openSpaces is shared).
+  const settings = await fetch(new URL('/api/settings', server.url), { headers: { 'x-desk-token': server.token } }).then(r => r.json());
+  const wins = BrowserWindow.getAllWindows();
+  const win = wins.find(w => projectOf(w) === body.path) ?? (settings.openSpaces?.includes(body.path) ? BrowserWindow.getFocusedWindow() ?? wins[0] : null);
   if (!win) return createWindow({ project: body.path });
   if (win.isMinimized()) win.restore();
   win.focus();
@@ -94,7 +99,8 @@ async function boot() {
     dataDir: app.getPath('userData'),
     voiceHelper: app.isPackaged ? path.join(process.resourcesPath, 'desk-listen') : path.join(ROOT, 'native/build/desk-listen'),
   };
-  server = await start({ ...options, port: Number(process.env.PORT) || (DEBUG ? 4849 : 4848) }).catch(e => {
+  const own = Number(process.env.RELAY_PORT); // for testing beside a running Relay; anything but a valid port is ignored
+  server = await start({ ...options, port: Number.isInteger(own) && own > 0 && own < 65536 ? own : DEBUG ? 4849 : 4848 }).catch(e => {
     if (e.code !== 'EADDRINUSE') throw e;
     return start({ ...options, port: 0 }); // the port is taken, so take any free port
   });

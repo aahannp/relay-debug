@@ -1929,6 +1929,7 @@ esac
     const twinSees = (await rpc('tools/call', { name: 'read_agent_output', arguments: { agent: 'Twin' } }, asTwin)).result;
     assert.ok(!twinSees.isError, `a name the caller shares reaches the other one, not the caller: ${twinSees.content[0].text}`);
     sessions.get(helpers[0].id).attention = false;
+    await screenOf(helpers[0].id, /FAKE-CLAUDE/, 'the helper is up before a message is typed into it'); // typed sooner, a slow machine loses it
     const outside = (await rpc('tools/call', { name: 'message_agent', arguments: { agent: helpers[0].id, text: 'From outside Relay' } })).result;
     assert.ok(!outside.isError && JSON.parse(outside.content[0].text).agent === helpers[0].id, `an MCP client outside Relay still messages a pane by id: ${outside.content[0].text}`);
     await screenOf(helpers[0].id, /From outside Relay/, 'and it gets the message');

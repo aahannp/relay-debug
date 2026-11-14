@@ -19,7 +19,7 @@ const DEFAULTS = {
   sidebarHidden: ['Sidebar', false], threadView: ['Show threads as', 'chat'], fancyCursor: ['Animated cursor', false], scrollSpeed: ['Scroll speed', 1],
   theme: ['Theme', 't3dark'], fontSize: ['Text size', 13],
   defaultAgent: ['Default agent', 'claude'], agentDefaults: ['Model and effort', { claude: { model: 'sonnet', effort: '' }, lead: { model: 'opus', effort: 'high' } }],
-  permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
+  permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], promptSuggestions: ['Suggested prompts', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
   agentsCanMessage: ['Agents message', true], agentsAutonomous: ['Work together without asking', true], agentsCanSpawn: ['Agents start agents', true],
   leadUpkeep: ['Keep lead agents fresh', { on: false, compactAt: 70, windowCap: 200_000, replaceAfter: 3 }], agentsCanEditTeam: ['Agents edit the team', true],
   voiceLang: ['Language', 'en-US'], autoUpdate: ['Update automatically', true],
@@ -126,6 +126,8 @@ const PAGES = {
       setting('Show threads as', 'Every Claude thread, open now or later. A thread\'s own Chat or Terminal switch still changes just that one, until you change this.',
         h('div', { class: 'segmented', role: 'group', 'aria-label': 'Show threads as' }, [['chat', 'Chat'], ['terminal', 'Terminal']].map(([id, label]) =>
           h('button', { class: s.threadView === id ? 'on' : '', 'aria-pressed': String(s.threadView === id), onClick: () => set({ threadView: id }) }, label))), reset('threadView')),
+      setting('Suggest the next prompt', 'After a turn, Claude Code may suggest what to ask next, in grey in its input box and in the chat composer. Tab takes it. Applies to agents started from now on.',
+        toggle(s.promptSuggestions !== false, on => set({ promptSuggestions: on })), reset('promptSuggestions')),
       setting('Animated cursor', 'A custom cursor that reacts to what you point at. It steps aside over terminals and text.',
         toggle(s.fancyCursor === true, on => set({ fancyCursor: on })), reset('fancyCursor')),
       setting('Scroll speed', `${s.scrollSpeed ?? 1}× how far your trackpad or wheel moves. 1× matches Terminal and iTerm.`,

@@ -11,7 +11,7 @@ import { start } from './server.mjs';
 import { createWorktree } from './lib/git.mjs';
 import { db, bus, migrate, DEFAULTS as STORE_DEFAULTS } from './lib/store.mjs';
 import * as T from './lib/team.mjs';
-import { command, board, sessions, upkeep, effectiveWindow, claudeTheme, contrast, createSession, prose, onScreenPrompt, parseMenu, choose } from './lib/sessions.mjs';
+import { command, board, sessions, upkeep, effectiveWindow, claudeTheme, contrast, createSession, prose, onScreenPrompt, parseMenu, choose, promptSuggestion } from './lib/sessions.mjs';
 import headless from '@xterm/headless';
 import { THEMES } from './public/js/themes.js';
 import { transcriptContext, transcriptChat } from './lib/transcripts.mjs';
@@ -339,6 +339,10 @@ try {
   assert.match(hooks.PostToolUse[0].hooks[0].command, /\/api\/touched/, 'every file an agent edits is reported');
   assert.match(hooks.Stop[0].hooks[0].command, /\/api\/turn-ended/, 'and the end of each turn');
   assert.deepEqual(settingsOf(fresh).attribution, { commit: 'Generated via Relay', pr: 'Generated via Relay' }, 'commits and PRs say Relay made them');
+  assert.equal(settingsOf(fresh).promptSuggestionEnabled, undefined, "Claude Code's suggested prompts are left on by default");
+  db.settings.promptSuggestions = false;
+  assert.equal(settingsOf(command({ ...base, resume: false }, '', null).args).promptSuggestionEnabled, false, 'and turned off with the setting');
+  delete db.settings.promptSuggestions;
   process.env.CLAUDE_CODE_CHILD_SESSION = '1';
   assert.ok(!('CLAUDE_CODE_CHILD_SESSION' in command({ ...base, resume: false }, '', null).env), "an agent never inherits Claude Code's child-session flag, which turns transcript saving off");
   delete process.env.CLAUDE_CODE_CHILD_SESSION;
@@ -757,6 +761,22 @@ Ready to submit your answers?
   refused(() => choose(typing, 4, 'Type something.'), 'Answer this one in the terminal');
   assert.deepEqual([trusting.wrote, model.wrote, picking.wrote, typing.wrote], [['\x1b[B\r'], ['\x1b[A\x1b[A\x1b[A\x1b[A\r'], [], []], 'up when the option is above the cursor; nothing written when refused');
   assert.ok(onScreenPrompt(await onScreen(screens.model)) && onScreenPrompt(await onScreen(screens.askReview)), "/model's footer and the review step count as prompts, so no message is typed into them");
+  // The suggested next prompt: dim text alone in the input box, while idle, with no menu up
+  const rule = '─'.repeat(60);
+  const box = (inBox, above = '● Done.') => onScreen(`${above}\n\n${rule}\n❯ ${inBox}\x1b[0m\n${rule}\n  ? for shortcuts`);
+  assert.equal(promptSuggestion(await box('\x1b[2mName one animal')), 'Name one animal', 'a dim suggestion is read');
+  assert.equal(promptSuggestion(await box('\x1b[2mTry "how does <filepath> work?"')), null, 'the startup placeholder is no suggestion');
+  assert.equal(promptSuggestion(await box('Name one')), null, 'typed text is no suggestion');
+  assert.equal(promptSuggestion(await box('\x1b[2mName one \x1b[0manimal')), null, 'nor is dim text with typed text in the box');
+  assert.equal(promptSuggestion(await box('')), null, 'an empty box suggests nothing');
+  assert.equal(promptSuggestion(await box('\x1b[2mName one animal', '✶ Tempering… (3s)')), null, 'nothing while the spinner runs');
+  assert.equal(promptSuggestion(prompt), null, 'nothing while a menu is up');
+  const busy = await box('\x1b[2mName one animal');
+  busy.lastOutputAt = Date.now();
+  assert.equal(promptSuggestion(busy), null, 'nothing while the agent is working');
+  db.settings.promptSuggestions = false;
+  assert.equal(promptSuggestion(await box('\x1b[2mName one animal')), null, 'nothing when the setting is off');
+  delete db.settings.promptSuggestions;
   }
   fs.writeFileSync(talk, `${entry('n1', 'user', 'new start')}\n`);
   assert.deepEqual((({ reset, items }) => ({ reset, items }))(transcriptChat(talk, more.size, repo)), { reset: true, items: [{ kind: 'user', key: 'n1:0', text: 'new start', images: 0, at: null }] }, 'a file that shrank starts over');

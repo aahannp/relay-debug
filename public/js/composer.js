@@ -126,15 +126,23 @@ export function composer(p) {
   let shown = ''; // the menu it was built from, so a feed read with the same menu leaves it alone
   let choosing = false;
   let working = false;
+  let ghost = ''; // Claude Code's suggested next prompt, shown grey in the empty box; Tab (or → there) takes it
+  let declined = ''; // the suggestion typing hid, kept hidden until Claude suggests something else
   let model = p.session.model; // picked here, it's ours until the board's changes (a /model typed in the terminal)
   let boardModel = model;
 
   const dock = h('div', { class: 'chat-dock', hidden: true });
   const drawer = h('div', { class: 'chat-dock chat-menu', id: `chat-menu-${++pops}`, role: 'listbox', hidden: true, onPointerdown: e => e.preventDefault() });
   const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'Message Claude', 'aria-autocomplete': 'list', 'aria-controls': drawer.id,
-    onInput: () => { buttons(); suggest(); }, onClick: () => suggest(), onBlur: () => closeMenu(), onKeydown: e => {
+    onInput: () => { if (ghost) take(''); buttons(); suggest(); }, onClick: () => suggest(), onBlur: () => closeMenu(), onKeydown: e => {
       if (e.isComposing) return;
       if (found && menuKey(e)) return;
+      if (ghost && !input.value && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        take(ghost);
+        buttons();
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
       if (e.key === 'Escape') { e.preventDefault(); p.send('\x1b'); } // interrupts Claude, as in the terminal
     }, onKeyup: e => /^(Arrow(Left|Right)|Home|End)$/.test(e.key) && suggest() });
@@ -382,6 +390,15 @@ export function composer(p) {
       h('div', { class: 'chat-dock-error', role: 'alert' }));
   }
 
+  // Takes the suggestion into the box (or, with '', just hides it, as typing does) until Claude suggests another.
+  function take(text) {
+    if (text) input.value = text;
+    declined = ghost;
+    ghost = '';
+    input.placeholder = 'Ask anything, @tag files/folders, or / for commands';
+    input.removeAttribute('aria-description');
+  }
+
   // While a panel is up the input is off, so focus goes to the panel's first choice, where 1–9 work.
   const focus = () => (input.disabled ? dock.querySelector('.chat-option, .btn.primary') ?? dock.querySelector('button') : input)?.focus();
 
@@ -390,11 +407,15 @@ export function composer(p) {
     focus,
     keys,
     // `pending` is the tool still waiting for its result (or null); `menu` is the menu on Claude's screen (or null).
-    update({ status, exited, prompting, menu, pending }) {
+    update({ status, exited, prompting, menu, pending, suggestion = null }) {
       const had = el.contains(document.activeElement);
       const up = prompting && !exited;
       input.disabled = exited || prompting;
-      input.placeholder = exited ? 'This agent has exited' : prompting ? 'Choose an option above' : 'Ask anything, @tag files/folders, or / for commands';
+      if (suggestion !== declined) declined = '';
+      ghost = !exited && !prompting && !input.value && suggestion && suggestion !== declined ? suggestion : '';
+      input.placeholder = exited ? 'This agent has exited' : prompting ? 'Choose an option above' : ghost || 'Ask anything, @tag files/folders, or / for commands';
+      if (ghost) input.setAttribute('aria-description', 'Suggested prompt. Tab to use it.');
+      else input.removeAttribute('aria-description');
       working = status === 'working' && !exited;
       buttons();
       const key = up ? JSON.stringify([menu, pending?.id]) : '';

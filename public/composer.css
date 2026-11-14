@@ -12,7 +12,7 @@
   max-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; } /* never taller than the pane body */
 @container (min-width: 640px) { .chat-composer { padding-inline: 48px; } } /* lines up with chat.css's lane */
 .chat-composer-lane { width: 100%; max-width: 46rem; min-height: 0; margin-inline: auto; pointer-events: auto; display: flex; flex-direction: column; }
-.chat-composer-lane > .chat-dock { min-height: 0; overflow-y: auto; scrollbar-width: thin; } /* a tall card scrolls; the chat card stays whole */
+.chat-composer-lane > .chat-dock { min-height: 0; overflow: hidden auto; scrollbar-width: thin; } /* a tall card scrolls; the chat card stays whole */
 
 .chat-card { flex: none; position: relative; z-index: 1; isolation: isolate; display: flex; flex-direction: column; border-radius: 22px;
   background: color-mix(in srgb, var(--composer-glass) 80%, transparent);

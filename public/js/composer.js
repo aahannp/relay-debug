@@ -6,13 +6,63 @@
 // From ChatComposer, ComposerCommandMenu, ComposerAttachmentStrip, ComposerControl, ComposerPendingApprovalPanel, ComposerPendingApprovalActions,
 // ComposerPendingUserInputPanel, ComposerPrimaryActions, ContextWindowMeter, ComposerUsageLimits (LimitWindows)
 // and UsageLimitRecoveryBanner.
-import { api, h, icon, menu, money, on } from './ui.js';
+import { state, api, h, icon, menu, money, on } from './ui.js';
 
 // Control characters out (newlines and tabs stay), so a paste can't end the paste brackets early (as lib/sessions.mjs does).
 const CONTROL = /\x1b|[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
 const APPROVAL = { Bash: 'Command approval', Edit: 'File change approval', MultiEdit: 'File change approval', Write: 'File change approval',
   NotebookEdit: 'File change approval', Read: 'File read approval' };
 const squash = text => String(text ?? '').replace(/\s+/g, ' ').trim();
+
+// Claude Code's built-ins (and their aliases) whose answer is only on their own screen: a dialog or picker (local-jsx or
+// Ink, in claude 2.1.325), or text the chat hides (/context, /cost, /version). Skills, plugin commands (/m-skills:pr) and
+// prompt built-ins (/init, /review) answer in the chat; /compact, /clear, /plan, /fast, /rename x and the like just do it.
+// An allowlist, not "every unknown command": the page can't tell a skill (/ponytail) from a built-in it hasn't heard of.
+const SCREENS = new Set(['add-dir', 'advisor', 'agents', 'allowed-tools', 'android', 'app', 'artifacts', 'background', 'bashes', 'bg',
+  'break-reminder', 'breaks', 'btw', 'bug', 'checkpoint', 'checkup', 'chrome', 'cloud-plugins', 'config', 'context', 'copy', 'cost',
+  'daemon', 'design-login', 'desktop', 'diff', 'doctor', 'downtime', 'export', 'extra-usage', 'feedback', 'help', 'hooks', 'ide',
+  'install', 'install-github-app', 'ios', 'login', 'logout', 'loops', 'marketplace', 'mcp', 'memory', 'mobile', 'passes',
+  'permissions', 'plugin', 'plugins', 'powerup', 'privacy-settings', 'rate-limit-options', 'rc', 'release-notes', 'remote',
+  'remote-control', 'remote-env', 'rewind', 'sandbox', 'scroll-speed', 'session', 'settings', 'setup-bedrock', 'setup-vertex',
+  'share', 'skill-doctor', 'skills', 'stats', 'status', 'tasks', 'teleport', 'terminal-setup', 'theme', 'tp', 'ultraplan',
+  'ultrareview', 'undo', 'upgrade', 'usage', 'usage-credits', 'version', 'web-setup', 'wellbeing', 'workflows']);
+// These open a picker only when typed alone: /model opus just switches.
+const PICKERS = new Set(['autocompact', 'color', 'continue', 'effort', 'import', 'model', 'output-style', 'resume', 'tui', 'use-case']);
+export function drawsScreen(text) {
+  const [, name, arg] = text.match(/^\/([\w-]+)(?:\s+([\s\S]*))?$/) ?? [];
+  return SCREENS.has(name) || (PICKERS.has(name) && !arg?.trim());
+}
+
+// Which way each Claude thread shows (agents.js), kept in `storage` (localStorage): the threads you switched away from
+// Settings' "Show threads as", by chat id. Read afresh for every change, so two windows don't write over each other's.
+const FLIPPED = 'agent-desk:view-flipped';
+export function views(storage) {
+  const flipped = () => { try { return new Set(JSON.parse(storage.getItem(FLIPPED) ?? '[]')); } catch { return new Set(); } };
+  const save = list => { try { storage.setItem(FLIPPED, JSON.stringify([...list])); } catch {} };
+  let last; // the setting the open threads follow
+  return {
+    shows: (key, chat) => chat !== flipped().has(key), // true for chat; `chat` is what the setting says
+    // Only a switch you make (remember) is kept: the trip to a built-in's screen (drawsScreen) isn't.
+    note(key, on, chat, remember) {
+      if (!remember) return;
+      const list = flipped();
+      list[on === chat ? 'delete' : 'add'](key);
+      save(list);
+    },
+    forget(key) { const list = flipped(); if (list.delete(key)) save(list); },
+    // The setting arrived or changed: true when the open threads should follow it. Changing it, or picking it again
+    // (force), starts the per-thread switches over.
+    follow(now, force = false) {
+      if (!now || (now === last && !force)) return false;
+      if (last || force) save([]);
+      last = now;
+      return true;
+    },
+    // Once: 'agent-desk:chat-view' (from when Terminal was the default) and 'agent-desk:terminal-view', which also kept
+    // the trips to a built-in's screen, so threads that flipped on their own open in chat again.
+    dropOld() { try { storage.removeItem('agent-desk:chat-view'); storage.removeItem('agent-desk:terminal-view'); } catch {} },
+  };
+}
 
 // What the docked panel shows for the menu on Claude's screen (menuOf in lib/sessions.mjs: { lines, multi,
 // options: [{ n, label, current, typed }] }, or null) and the tool waiting for its result ({ id, name, detail, ask },
@@ -90,7 +140,7 @@ function popover(button, ...content) {
 const popRow = (label, value) => h('div', { class: 'chat-pop-row' }, h('span', {}, label), h('span', { class: 'chat-pop-num' }, value));
 
 // The model chip's menu: what `/model <id>` switches the running Claude to.
-const MODELS = [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
+const MODELS = [['opus', 'Opus'], ['fable', 'Fable'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
 const modelName = id => MODELS.find(([m]) => m === id)?.[1] ?? 'Default model';
 
 // Claude Code's built-in commands for the `/` menu; the project's and your own .claude/commands/*.md join them.
@@ -101,6 +151,9 @@ const COMMANDS = [['add-dir', 'Add a working directory'], ['agents', 'Manage sub
   ['memory', 'Edit memory files'], ['model', 'Switch the model'], ['permissions', 'Manage tool permissions'],
   ['resume', 'Resume an earlier conversation'], ['review', 'Review a pull request'], ['rewind', 'Rewind the conversation or code'],
   ['status', 'Show version, model and account'], ['usage', 'Show plan usage limits']];
+// Every built-in the page knows: the described ones, then the rest of SCREENS and PICKERS, and the chat-side ones named above.
+const BUILTINS = [...COMMANDS, ...[...SCREENS, ...PICKERS, 'plan', 'fast', 'rename'].filter(n => !COMMANDS.some(([c]) => c === n))
+  .map(n => [n, drawsScreen(`/${n}`) ? 'Opens in the terminal' : 'Built-in command'])];
 // The word being typed at the caret, if it opens the menu: `/` at the very start of the box, or `@` anywhere.
 export function triggerAt(text, caret) {
   const m = /(^|\s)([@/])(\S*)$/.exec(text.slice(0, caret));
@@ -113,14 +166,23 @@ export function composer(p) {
   let shown = ''; // the menu it was built from, so a feed read with the same menu leaves it alone
   let choosing = false;
   let working = false;
-  let model = p.session.model; // picked here, it's ours: the session keeps the model it started with
+  let ghost = ''; // Claude Code's suggested next prompt, shown grey in the empty box; Tab (or → there) takes it
+  let declined = ''; // the suggestion typing hid, kept hidden until Claude suggests something else
+  let model = p.session.model; // picked here, it's ours until the board's changes (a /model typed in the terminal)
+  let boardModel = model;
 
   const dock = h('div', { class: 'chat-dock', hidden: true });
   const drawer = h('div', { class: 'chat-dock chat-menu', id: `chat-menu-${++pops}`, role: 'listbox', hidden: true, onPointerdown: e => e.preventDefault() });
   const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'Message Claude', 'aria-autocomplete': 'list', 'aria-controls': drawer.id,
-    onInput: () => { buttons(); suggest(); }, onClick: () => suggest(), onBlur: () => closeMenu(), onKeydown: e => {
+    onInput: () => { if (ghost) take(''); buttons(); suggest(); }, onClick: () => suggest(), onBlur: () => closeMenu(), onKeydown: e => {
       if (e.isComposing) return;
       if (found && menuKey(e)) return;
+      if (ghost && !input.value && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        take(ghost);
+        buttons();
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
       if (e.key === 'Escape') { e.preventDefault(); p.send('\x1b'); } // interrupts Claude, as in the terminal
     }, onKeyup: e => /^(Arrow(Left|Right)|Home|End)$/.test(e.key) && suggest() });
@@ -135,6 +197,11 @@ export function composer(p) {
   const usage = popover(limitsButton);
   const limitBanner = h('div', { class: 'chat-dock chat-limit', role: 'status', hidden: true });
   const modelLabel = h('span', {}, modelName(model));
+  const offModel = on('sessions', () => {
+    const s = state.sessions.find(x => x.id === p.session.id);
+    if (!s) return offModel(); // the session is gone
+    if (s.model !== boardModel) { boardModel = model = s.model; modelLabel.textContent = modelName(model); }
+  });
   const chip = h('button', { type: 'button', class: 'chat-control chat-model', 'aria-haspopup': 'menu', title: 'Model', onClick: () => pickModel() },
     icon('sparkles', 16), modelLabel, icon('chevronDown', 14));
   // Attach: starts an `@` mention at the caret, whose menu picks a file or folder; Claude Code reads what it names.
@@ -247,11 +314,12 @@ export function composer(p) {
     if (!listings.has(dir)) listings.set(dir, api('GET', `/api/fs/list?path=${encodeURIComponent(dir)}`).catch(() => []));
     return listings.get(dir);
   };
-  const own = async dir => (await list(dir)).filter(f => !f.dir && f.name.endsWith('.md')).map(f => [f.name.slice(0, -3), dir.startsWith('~') ? 'Your command' : 'Project command']);
+  let own = null; // the project's and your .claude/commands: asked once, and the menu never waits for them
   async function itemsFor(t) {
     const q = t.query.toLowerCase();
     if (t.kind === '/') {
-      const all = [...COMMANDS, ...await own(`${p.session.cwd}/.claude/commands`), ...await own('~/.claude/commands')];
+      if (!own) { own = []; api('GET', `/api/commands?cwd=${encodeURIComponent(p.session.cwd)}`).then(l => own.push(...l), () => {}); }
+      const all = [...BUILTINS, ...own];
       return all.filter(([name]) => name.toLowerCase().includes(q)).sort(([a], [b]) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q))
         .map(([name, desc]) => ({ label: `/${name}`, desc, icon: 'terminal', text: `/${name} ` }));
     }
@@ -311,7 +379,7 @@ export function composer(p) {
 
   // The menu opens above the chip, as the composer sits at the foot of the window.
   function pickModel() {
-    menu(chip, MODELS.map(([id, name]) => ({ label: name, icon: id === model ? 'check' : null, onClick: () => {
+    menu(chip, MODELS.map(([id, name]) => ({ label: name, checked: id === model, icon: id === model ? 'check' : null, onClick: () => {
       if (id === model || !type(`/model ${id}`)) return;
       model = id;
       modelLabel.textContent = name;
@@ -363,6 +431,15 @@ export function composer(p) {
       h('div', { class: 'chat-dock-error', role: 'alert' }));
   }
 
+  // Takes the suggestion into the box (or, with '', just hides it, as typing does) until Claude suggests another.
+  function take(text) {
+    if (text) input.value = text;
+    declined = ghost;
+    ghost = '';
+    input.placeholder = 'Ask anything, @tag files/folders, or / for commands';
+    input.removeAttribute('aria-description');
+  }
+
   // While a panel is up the input is off, so focus goes to the panel's first choice, where 1–9 work.
   const focus = () => (input.disabled ? dock.querySelector('.chat-option, .btn.primary') ?? dock.querySelector('button') : input)?.focus();
 
@@ -371,11 +448,15 @@ export function composer(p) {
     focus,
     keys,
     // `pending` is the tool still waiting for its result (or null); `menu` is the menu on Claude's screen (or null).
-    update({ status, exited, prompting, menu, pending }) {
+    update({ status, exited, prompting, menu, pending, suggestion = null }) {
       const had = el.contains(document.activeElement);
       const up = prompting && !exited;
       input.disabled = exited || prompting;
-      input.placeholder = exited ? 'This agent has exited' : prompting ? 'Choose an option above' : 'Ask anything, @tag files/folders, or / for commands';
+      if (suggestion !== declined) declined = '';
+      ghost = !exited && !prompting && !input.value && suggestion && suggestion !== declined ? suggestion : '';
+      input.placeholder = exited ? 'This agent has exited' : prompting ? 'Choose an option above' : ghost || 'Ask anything, @tag files/folders, or / for commands';
+      if (ghost) input.setAttribute('aria-description', 'Suggested prompt. Tab to use it.');
+      else input.removeAttribute('aria-description');
       working = status === 'working' && !exited;
       buttons();
       const key = up ? JSON.stringify([menu, pending?.id]) : '';
@@ -420,13 +501,13 @@ export function composer(p) {
     return true;
   }
 
-  // A slash command other than /compact or /clear draws its own screen, which only the terminal shows.
+  // A built-in that draws its own screen shows it in the terminal, for this once: the thread still opens in chat.
   function submit() {
     const text = input.value.replace(CONTROL, '').trim();
     if (!type(text)) return;
     input.value = '';
     buttons();
     el.dispatchEvent(new Event('sent'));
-    if (/^\/(?!(compact|clear)\b)\S/.test(text)) p.showChat(false);
+    if (drawsScreen(text)) p.showChat(false);
   }
 }

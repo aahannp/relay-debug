@@ -33,7 +33,7 @@ export function mount(el) {
   stage = h('div', { class: 'art-stage' });
   chat = {
     model: h('select', { class: 'input art-chat-model', 'aria-label': 'Model for edits', onChange: e => actions.setSetting({ artifactEditModel: e.target.value }) },
-      [['haiku', 'Haiku'], ['sonnet', 'Sonnet'], ['opus', 'Opus']].map(([id, label]) => h('option', { value: id }, label))),
+      [['haiku', 'Haiku'], ['sonnet', 'Sonnet'], ['opus', 'Opus'], ['fable', 'Fable']].map(([id, label]) => h('option', { value: id }, label))),
     stop: h('button', { class: 'icon-btn', title: 'Stop the edit chat', 'aria-label': 'Stop the edit chat', onClick: () => actions.closePane(sessionOf(current())?.id) }, icon('stop', 14)),
     body: h('div', { class: 'art-chat-body' }),
   };

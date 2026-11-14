@@ -8,11 +8,13 @@
   --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%); }
 
 /* Floats over the list, in the same 46rem lane; chat.js pads the list by its height so the last message clears it. */
-.chat-composer { position: absolute; inset: auto 0 0; z-index: 20; padding: 0 12px 16px; pointer-events: none; }
+.chat-composer { position: absolute; inset: auto 0 0; z-index: 20; padding: 0 12px 16px; pointer-events: none;
+  max-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; } /* never taller than the pane body */
 @container (min-width: 640px) { .chat-composer { padding-inline: 48px; } } /* lines up with chat.css's lane */
-.chat-composer-lane { max-width: 46rem; margin-inline: auto; pointer-events: auto; }
+.chat-composer-lane { width: 100%; max-width: 46rem; min-height: 0; margin-inline: auto; pointer-events: auto; display: flex; flex-direction: column; }
+.chat-composer-lane > .chat-dock { min-height: 0; overflow: hidden auto; scrollbar-width: thin; } /* a tall card scrolls; the chat card stays whole */
 
-.chat-card { position: relative; z-index: 1; isolation: isolate; display: flex; flex-direction: column; border-radius: 22px;
+.chat-card { flex: none; position: relative; z-index: 1; isolation: isolate; display: flex; flex-direction: column; border-radius: 22px;
   background: color-mix(in srgb, var(--composer-glass) 80%, transparent);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation)); backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   box-shadow: var(--shadow-composer), inset 0 0 0 1px var(--composer-outline); }

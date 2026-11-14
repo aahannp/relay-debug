@@ -6,7 +6,7 @@ import { modelSelect, effortSelect } from './agents.js';
 import { openUpdates } from './updates.js';
 import { THEMES } from './themes.js';
 
-const PERMISSIONS = [
+export const PERMISSIONS = [
   ['default', 'Ask me', 'Agents ask before editing files or running commands. The safest choice.'],
   ['acceptEdits', 'Accept edits', 'File edits go through. Commands still ask first.'],
   ['auto', 'Auto', 'Claude decides what is safe to do without asking, and asks for the rest.'],
@@ -16,12 +16,12 @@ const LANGUAGES = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['en-IN
   ['es-ES', 'Spanish'], ['fr-FR', 'French'], ['de-DE', 'German'], ['pt-BR', 'Portuguese (Brazil)'], ['ja-JP', 'Japanese']];
 // The defaults (as in lib/store.mjs) of what this page sets, for T3's per-row "Reset to default" and "Restore defaults".
 const DEFAULTS = {
-  sidebarHidden: ['Sidebar', false], fancyCursor: ['Animated cursor', false], scrollSpeed: ['Scroll speed', 1],
+  sidebarHidden: ['Sidebar', false], threadView: ['Show threads as', 'chat'], fancyCursor: ['Animated cursor', false], scrollSpeed: ['Scroll speed', 1],
   theme: ['Theme', 't3dark'], fontSize: ['Text size', 13],
-  defaultAgent: ['Default agent', 'claude'], agentDefaults: ['Model and effort', { claude: { model: 'sonnet', effort: '' }, lead: { model: 'opus', effort: 'high' } }],
-  permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
+  defaultAgent: ['Default agent', 'claude'], agentDefaults: ['Model and effort', { claude: { model: 'sonnet', effort: '', compactWindow: 300_000 }, lead: { model: 'opus', effort: 'high', compactWindow: 400_000 } }],
+  permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], promptSuggestions: ['Suggested prompts', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
   agentsCanMessage: ['Agents message', true], agentsAutonomous: ['Work together without asking', true], agentsCanSpawn: ['Agents start agents', true],
-  leadUpkeep: ['Keep lead agents fresh', { on: false, compactAt: 70, windowCap: 200_000, replaceAfter: 3 }], agentsCanEditTeam: ['Agents edit the team', true],
+  leadUpkeep: ['Keep lead agents fresh', { on: false, compactAt: 70, replaceAfter: 3 }], agentsCanEditTeam: ['Agents edit the team', true],
   voiceLang: ['Language', 'en-US'], autoUpdate: ['Update automatically', true],
 };
 const same = (a, b) => a === b || (a && b && typeof a === 'object' && typeof b === 'object' && Object.keys({ ...a, ...b }).every(k => same(a[k], b[k])));
@@ -106,8 +106,6 @@ function popupSelect(select, label) {
     trigger.setAttribute('aria-expanded', 'true');
     const shut = refocus => { m.remove(); trigger.setAttribute('aria-expanded', 'false'); if (refocus) trigger.focus(); };
     m.addEventListener('keydown', e => {
-      const at = { ArrowDown: items.indexOf(document.activeElement) + 1, ArrowUp: items.indexOf(document.activeElement) - 1, Home: 0, End: items.length - 1 }[e.key];
-      if (at !== undefined) { e.preventDefault(); items[(at + items.length) % items.length].focus(); }
       if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); shut(true); }
     });
     // A click outside, or focus moving on. Deferred: removing the menu fires focusout too, and a second remove() inside it throws.
@@ -125,6 +123,11 @@ const PAGES = {
     group('General', [
       setting('Sidebar', 'Hide it to give the panes the whole window. ⌘B or the button at the top left also do it.',
         toggle(s.sidebarHidden !== true, on => set({ sidebarHidden: !on })), reset('sidebarHidden')),
+      setting('Show threads as', 'Every Claude thread, open now or later. A thread\'s own Chat or Terminal switch still changes just that one, until you change this.',
+        h('div', { class: 'segmented', role: 'group', 'aria-label': 'Show threads as' }, [['chat', 'Chat'], ['terminal', 'Terminal']].map(([id, label]) =>
+          h('button', { class: s.threadView === id ? 'on' : '', 'aria-pressed': String(s.threadView === id), onClick: () => actions.showThreadsAs(id) }, label))), reset('threadView')),
+      setting('Suggest the next prompt', 'After a turn, Claude Code may suggest what to ask next, in grey in its input box and in the chat composer. Tab takes it. Applies to agents started from now on.',
+        toggle(s.promptSuggestions !== false, on => set({ promptSuggestions: on })), reset('promptSuggestions')),
       setting('Animated cursor', 'A custom cursor that reacts to what you point at. It steps aside over terminals and text.',
         toggle(s.fancyCursor === true, on => set({ fancyCursor: on })), reset('fancyCursor')),
       setting('Scroll speed', `${s.scrollSpeed ?? 1}× how far your trackpad or wheel moves. 1× matches Terminal and iTerm.`,
@@ -159,8 +162,8 @@ const PAGES = {
       a.installed ? h('span', { class: 'chip', style: { color: 'var(--ok)' } }, icon('check', 11), 'Installed') : h('span', { class: 'chip' }, 'Not found on your PATH'),
       a.installed && h('button', { class: `btn xs${s.defaultAgent === a.id ? ' primary' : ''}`, onClick: () => set({ defaultAgent: a.id }) }, s.defaultAgent === a.id ? 'Default' : 'Make default')))]),
     group('Defaults', [
-      ...[['claude', 'workers', 'New Claude Code threads, workers, and specialists left on the default. Sonnet keeps spend down; pick Opus for harder work.'], ['lead', 'lead agents', 'The agent that plans and hands out the work.']].map(([kind, title, text]) => {
-        const d = s.agentDefaults?.[kind] ?? { model: '', effort: '' };
+      ...[['claude', 'workers', 'New Claude Code threads, workers, and specialists left on the default. Sonnet keeps spend down; pick Opus for harder work, Fable for the hardest (at twice the price of Opus).'], ['lead', 'lead agents', 'The agent that plans and hands out the work.']].map(([kind, title, text]) => {
+        const d = s.agentDefaults?.[kind] ?? { model: '', effort: '', compactWindow: '' };
         const save = patch => set({ agentDefaults: { ...s.agentDefaults, [kind]: { ...d, ...patch } } });
         const model = modelSelect(d.model);
         const effort = effortSelect(d.effort);
@@ -168,8 +171,14 @@ const PAGES = {
         effort.options[0].textContent = 'Your Claude Code default';
         model.addEventListener('change', () => save({ model: model.value }));
         effort.addEventListener('change', () => save({ effort: effort.value }));
-        return setting(`Model and effort for ${title}`, `${text} Agents can still ask for a lighter or stronger one for a job.`,
-          h('div', { class: 'row' }, popupSelect(model, `Model for ${title}`), popupSelect(effort, `Effort for ${title}`)),
+        const yours = state.info.yourCompactWindow;
+        const compact = h('select', {}, [['', "Claude Code's own window"], ...[...new Set([200_000, 300_000, 400_000, 600_000, d.compactWindow])].filter(Number)
+          .sort((a, b) => a - b).map(n => [n, `Compact at ${n / 1000}K`])].map(([value, label]) => h('option', { value, selected: String(d.compactWindow) === String(value) }, label)));
+        compact.addEventListener('change', () => save({ compactWindow: compact.value ? Number(compact.value) : '' }));
+        return setting(`Model and effort for ${title}`, `${text} Agents can still ask for a lighter or stronger one for a job. A bigger window means fewer compactions; each turn re-reads more.`,
+          h('div', {}, h('div', { class: 'row', style: { flexWrap: 'wrap' } }, popupSelect(model, `Model for ${title}`), popupSelect(effort, `Effort for ${title}`),
+            yours ? h('span', { class: 'muted', style: { fontSize: '12px' } }, `Your Claude Code sets ${Math.round(yours / 1000)}K; Relay uses it`) : popupSelect(compact, `When ${title} compact`)),
+            !yours && h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '4px' } }, 'Applies to agents started from now on.')),
           { agentDefaults: { ...s.agentDefaults, [kind]: DEFAULTS.agentDefaults[1][kind] } });
       }),
       setting('Permissions for Claude agents', PERMISSIONS.find(p => p[0] === s.permissionMode)?.[2] ?? '',
@@ -208,7 +217,7 @@ const PAGES = {
         ? 'On: an agent can start a specialist or a worker, on a model it picks, for part of its job. A lead agent needs this.'
         : 'Off: agents can see the team but only you start agents.',
       toggle(s.agentsCanSpawn !== false, on => set({ agentsCanSpawn: on })), reset('agentsCanSpawn')),
-      leadUpkeep({ on: false, compactAt: 70, windowCap: 200_000, replaceAfter: 3, ...s.leadUpkeep }),
+      leadUpkeep({ on: false, compactAt: 70, replaceAfter: 3, ...s.leadUpkeep }),
       setting('Agents can edit the team', s.agentsCanEditTeam !== false
         ? 'On: when you ask ("Scout, make your answers shorter"), an agent can change a specialist\'s profile. It asks you first each time. Applies to agents started from then on.'
         : 'Off: agents can read the team\'s profiles but only you change them.',
@@ -286,15 +295,14 @@ export function reveal(hit) {
   [...root.querySelectorAll('.setting .label h3')].find(t => t.textContent === hit.title)?.closest('.setting').scrollIntoView({ block: 'center' });
 }
 
-// A switch plus three small numbers: when to compact a lead (a % of a window in thousands of tokens), and after
-// how many compactions to replace it.
+// A switch plus two small numbers: when to compact a lead (a % of its window), and after how many compactions to replace it.
 function leadUpkeep(u) {
   const save = patch => set({ leadUpkeep: { ...u, ...patch } });
-  const number = (key, min, max, scale = 1) => h('input', { class: 'input', type: 'number', min, max, value: u[key] / scale, style: { width: '62px' },
-    onChange: e => save({ [key]: Math.round(Number(e.target.value)) * scale }) });
-  return setting('Keep lead agents fresh', 'When a lead is idle with its context that full, Relay compacts it, and after that many compactions a fresh lead with the same name takes over its work. A smaller window (the model\'s own, or the auto-compact window: your Claude Code\'s, else 200K) wins.',
+  const number = (key, min, max) => h('input', { class: 'input', type: 'number', min, max, value: u[key], style: { width: '62px' },
+    onChange: e => save({ [key]: Math.round(Number(e.target.value)) }) });
+  return setting('Keep lead agents fresh', 'When a lead is idle with its context that full, Relay compacts it, and after that many compactions a fresh lead with the same name takes over its work. The window is the lead\'s compact window under Defaults (your Claude Code\'s, if it sets one).',
     h('div', { class: 'row', style: { flexWrap: 'wrap' } },
-      'Compact at', number('compactAt', 50, 95), '% of a', number('windowCap', 50, 2000, 1000), 'K-token window, replace after', number('replaceAfter', 1, 10), 'compactions',
+      'Compact at', number('compactAt', 50, 95), "% of the lead's window, replace after", number('replaceAfter', 1, 10), 'compactions',
       toggle(u.on, on => save({ on }))), reset('leadUpkeep'));
 }
 

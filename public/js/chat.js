@@ -1,6 +1,6 @@
 // Chat view of a Claude pane: the same conversation as its terminal, read from Claude Code's transcript.
 // The terminal stays mounted underneath, so switching back is instant and Claude's screen is never disturbed.
-// The server sends only what's new ({ sid, size, reset, prompting, menu, items }); the page only appends.
+// The server sends only what's new ({ sid, size, reset, prompting, menu, suggestion, items }); the page only appends.
 // Runs of tool calls fold into one work-log line (worklog.js), as in T3 Code; the composer floats over the list's foot.
 // Adapted from T3 Code (https://github.com/pingdotgg/t3code), MIT © 2026 T3 Tools Inc. See NOTICE.
 import { api, copy, h, icon, markdown, on, state, actions, toast } from './ui.js';
@@ -89,6 +89,7 @@ export function chatView(p) {
   let last = 0;
   let prompting = false;
   let menu = null;
+  let suggestion = null; // Claude Code's suggested next prompt (promptSuggestion in lib/sessions.mjs)
   let status = '';
   let since = null; // when the last user message was sent (ms), for "Working for 12s"; null from an older server
   let tick = 0;
@@ -130,7 +131,7 @@ export function chatView(p) {
     if (status === 'working') { count(); tick ||= setInterval(count, 1000); }
     else { clearInterval(tick); tick = 0; }
     if (group) refresh(group);
-    c.update({ status, exited: p.session.exited, prompting, menu, pending: [...waiting.values()].at(-1) ?? null });
+    c.update({ status, exited: p.session.exited, prompting, menu, suggestion, pending: [...waiting.values()].at(-1) ?? null });
   }
 
   // At most one request every 500 ms while output streams in, plus one after the last chunk.
@@ -158,6 +159,7 @@ export function chatView(p) {
       after = r.size;
       prompting = r.prompting;
       menu = r.menu ?? null;
+      suggestion = r.suggestion ?? null;
       add(r.items, r.reset);
       lock();
       hint.textContent = EMPTY;
@@ -364,7 +366,8 @@ export function chatView(p) {
       const was = status;
       status = now;
       lock();
-      if (was === 'working') poke();
+      // And once more a second on, when the server (idle after 3 s; this page says so at 2.5 s) agrees and reads Claude's suggested prompt.
+      if (was === 'working') { poke(); setTimeout(poke, 1000); }
     },
   };
 }

@@ -1,6 +1,8 @@
 // Agents view: every agent, shell and browser pane for the project, tiled in a grid of real terminals.
 import { state, api, h, icon, avatar, on, emit, toast, guard, actions, command, commands, menu, askText, modal, confirmDialog, agentLabel, shortBranch, baseName, copy, chatTitle, meterView, openSpaces, spaceSummary, DRAG, MONO, STATUS_LABEL } from './ui.js';
 import { chatView } from './chat.js';
+import { PERMISSIONS } from './settings.js';
+import { views } from './composer.js';
 
 const panes = new Map(); // id -> pane (a session's terminal, or a browser)
 const seen = new Map(); // session id -> last status we told you about
@@ -21,12 +23,13 @@ const stored = (key, fallback) => { try { return JSON.parse(localStorage.getItem
 const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
 const hidden = new Set();
 const hiddenKeys = new Set(stored(HIDDEN, '[]'));
+// Saved from a fresh read, so another window's hidden panes aren't written over.
+const saveHidden = (key, on) => { const saved = new Set(stored(HIDDEN, '[]')); saved[on ? 'add' : 'delete'](key); store(HIDDEN, [...saved]); };
 let maxKey = stored(MAX, 'null'); // the pane that was maximised, until it shows up again
-// Claude panes you switched to Terminal, by chat id like the hidden ones. Chat is the default, so the old
-// 'agent-desk:chat-view' list (the panes switched to Chat, back when Terminal was the default) means nothing now.
-const TERMINAL = 'agent-desk:terminal-view';
-const terminalKeys = new Set(stored(TERMINAL, '[]'));
-try { localStorage.removeItem('agent-desk:chat-view'); } catch {}
+// Claude panes you switched away from Settings' "Show threads as" (Chat or Terminal), by chat id like the hidden ones.
+const view = views(localStorage);
+view.dropOld();
+const chatByDefault = () => state.settings.threadView !== 'terminal';
 const keyOf = id => (s => s?.chatId ?? s?.shellId ?? id)(panes.get(id)?.session);
 
 export function mount(root) {
@@ -57,6 +60,7 @@ export function mount(root) {
   on('chats', () => { for (const p of panes.values()) if (p.kind === 'term') renderHead(p); });
   on('project', sync);
   on('settings', sync); // also picks up spaces opened or closed beside this one
+  on('settings', () => applyThreadView());
   on('theme', retheme);
   on('layout', switchLayout);
   on('chats', refreshHeader);
@@ -132,7 +136,7 @@ actions.renameAgent = renameAgent;
 
 // ---------- Specialists ----------
 const claudeReady = () => state.agents.some(a => a.id === 'claude' && a.installed);
-const MODELS = [['', 'Their usual model'], ['opus', 'Opus: the most capable'], ['sonnet', 'Sonnet: everyday work'], ['haiku', 'Haiku: quick and cheap']];
+const MODELS = [['', 'Their usual model'], ['fable', 'Fable: the hardest, longest tasks'], ['opus', 'Opus: complex work'], ['sonnet', 'Sonnet: everyday work'], ['haiku', 'Haiku: quick and cheap']];
 export const modelSelect = value => h('select', { class: 'input' }, MODELS.map(([id, label]) => h('option', { value: id, selected: id === value }, label)));
 const EFFORTS = [['', 'Their usual effort'], ['low', 'Low: quickest'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max: most thorough']];
 export const effortSelect = value => h('select', { class: 'input' }, EFFORTS.map(([id, label]) => h('option', { value: id, selected: id === value }, label)));
@@ -196,6 +200,19 @@ command('New shell', () => newSession({ kind: 'shell' }), { icon: 'terminal' });
 command('New browser pane', () => newBrowser(), { icon: 'globe' });
 command('Hide this pane', () => (focusedId ? hidePane(focusedId) : toast('Click into a pane first', 'error')), { icon: 'eyeOff' });
 command('Show hidden panes', () => showHidden(), { icon: 'eye' });
+command('Show all threads as chat', () => actions.showThreadsAs('chat'), { icon: 'message' });
+command('Show all threads as terminal', () => actions.showThreadsAs('terminal'), { icon: 'terminal' });
+
+// Settings' "Show threads as" changed (or arrived): every open Claude pane follows it, and per-thread switches start over.
+// Picking it on purpose (the palette, Settings) does that even when it already said so.
+function applyThreadView(force) {
+  if (!view.follow(state.settings.threadView, force)) return;
+  for (const p of panes.values()) if (p.showChat && !p.docked) p.showChat(view.shows(keyOf(p.id), chatByDefault()), false);
+}
+actions.showThreadsAs = async threadView => {
+  await actions.setSetting({ threadView });
+  if (state.settings.threadView === threadView) applyThreadView(true);
+};
 
 // ---------- Keeping panes in step with the server ----------
 // The grid shows the panes of each open space: the current one, and any you showed beside it from the sidebar.
@@ -305,7 +322,7 @@ function hidePane(id, on = true) {
   if (!panes.has(id) || on === hidden.has(id)) return;
   hidden[on ? 'add' : 'delete'](id);
   hiddenKeys[on ? 'add' : 'delete'](keyOf(id));
-  store(HIDDEN, [...hiddenKeys]);
+  saveHidden(keyOf(id), on);
   if (on && focusedId === id) setFocus(null);
   sync();
   emit('tick'); // the sidebar marks hidden panes
@@ -515,7 +532,7 @@ function terminalPane(s, parent) {
   const exitBar = h('div', { class: 'exit-bar' });
   const id = s.id;
   // A labelled two-segment switch rather than an icon, so a pane says which view you're in.
-  const seg = (label, chat) => h('button', { type: 'button', class: 'seg', onClick: () => p.showChat(chat) }, label);
+  const seg = (label, chat) => h('button', { type: 'button', class: 'seg', onClick: () => p.showChat(chat, true, true) }, label);
   const chatSeg = seg('Chat', true), termSeg = seg('Terminal', false);
   const viewSwitch = s.kind === 'agent' && s.agent === 'claude' && h('div', { class: 'view-switch', role: 'group', 'aria-label': 'View' }, chatSeg, termSeg);
   const blocksBtn = s.kind === 'shell' && h('button', { class: 'icon-btn', title: 'Command blocks', onClick: () => blocksBtn.classList.toggle('on', el.classList.toggle('show-blocks')) }, icon('list', 15));
@@ -562,12 +579,12 @@ function terminalPane(s, parent) {
     p.chat.el.addEventListener('focusin', () => setFocus(id));
     el.querySelector('.pane-body').append(p.chat.el);
     // The terminal stays mounted under the chat: hidden, fit() leaves the PTY its size, so Claude's screen is untouched.
-    p.showChat = (on, focus = true) => {
+    // Only a switch you make (remember) is kept for the thread; the composer's trip to a built-in's screen isn't.
+    p.showChat = (on, focus = true, remember = false) => {
       el.classList.toggle('chat-mode', on);
       chatSeg.setAttribute('aria-pressed', on);
       termSeg.setAttribute('aria-pressed', !on);
-      terminalKeys[on ? 'delete' : 'add'](keyOf(id));
-      store(TERMINAL, [...terminalKeys]);
+      view.note(keyOf(id), on, chatByDefault(), remember);
       if (on) p.chat.show();
       else { p.chat.hide(); p.fit(); }
       if (focus) focusPane(p);
@@ -576,7 +593,7 @@ function terminalPane(s, parent) {
   connect(p);
   panes.set(id, p);
   // A docked "Edit with AI" pane has no header, so no switch: it stays on the terminal.
-  p.showChat?.(!parent && !terminalKeys.has(keyOf(id)), false);
+  p.showChat?.(!parent && view.shows(keyOf(id), chatByDefault()), false);
   layout();
   return p;
 }
@@ -708,8 +725,8 @@ const closePane = guard(async id => {
   const keeps = p.session.chatId ? ' The chat stays in the sidebar, so you can drag it back in to carry on.' : '';
   if (!p.session.exited && !(await confirmDialog(`Stop "${chatTitle(p.session)}"?`, `This ends the process running in this pane.${keeps}`, { label: 'Stop', danger: true }))) return;
   await api('DELETE', `/api/sessions/${id}`);
-  if (hiddenKeys.delete(keyOf(id))) store(HIDDEN, [...hiddenKeys]);
-  if (terminalKeys.delete(keyOf(id))) store(TERMINAL, [...terminalKeys]);
+  if (hiddenKeys.delete(keyOf(id))) saveHidden(keyOf(id), false);
+  view.forget(keyOf(id));
   dispose(id);
   actions.refresh('sessions');
 });
@@ -1018,7 +1035,7 @@ function threadMenu(anchor, p) {
   const chat = p.el.classList.contains('chat-mode');
   menu(anchor, [
     p.session?.chatId && { label: 'Rename', icon: 'pen', onClick: () => renameInline(anchor, p.session) },
-    p.showChat && { label: chat ? 'Show terminal' : 'Show chat', icon: chat ? 'terminal' : 'message', onClick: () => p.showChat(!chat) },
+    p.showChat && { label: chat ? 'Show terminal' : 'Show chat', icon: chat ? 'terminal' : 'message', onClick: () => p.showChat(!chat, true, true) },
     { label: 'Show all threads in a grid', icon: 'layoutGrid', onClick: () => actions.setLayout('grid') },
     { label: 'Hide', icon: 'eyeOff', onClick: () => hidePane(p.id) },
     'sep',
@@ -1053,6 +1070,7 @@ const controls = () => [
   ['squareMenu', 'Toggle thread details', e => actions.threadDetails?.(e.currentTarget)],
   ['panelBottom', 'Toggle terminal drawer (⌘J)', () => actions.toggleDrawer?.()],
   ['panelRight', 'Toggle right panel (⌘D)', () => actions.toggleDiff?.()],
+  ...(claudeReady() ? [['star', 'Start a lead agent: it plans tasks and starts workers', () => (draft ? draft.setMode('lead') : openDraft(undefined, 'lead'))]] : []),
   ['layoutGrid', 'Show all threads in a grid', () => actions.setLayout('grid')],
 ].map(([name, label, onClick]) => h('button', { class: 'icon-btn', title: label, 'aria-label': label, onClick }, icon(name, 16)));
 
@@ -1067,10 +1085,10 @@ export const hide = () => document.getElementById('titleControls')?.replaceChild
 actions.newChat = project => (thread() ? openDraft(project) : newSession(project ? { project } : {}));
 command('New thread', () => actions.newChat(), { icon: 'squarePen' });
 
-function openDraft(project = state.project) {
-  if (!project) return actions.addProject(path => openDraft(path));
+function openDraft(project = state.project, mode = '') {
+  if (!project) return actions.addProject(path => openDraft(path, mode));
   unmaximise();
-  const d = { project, model: '' };
+  const d = { project, mode, model: '', effort: '' };
   const name = h('span', {}, projectName(project));
   const pickProject = path => { d.project = path; name.textContent = projectName(path); refreshHeader(); };
   const projectBtn = h('button', { class: 'draft-project', 'aria-haspopup': 'menu', title: 'Choose the project', onClick: e => menu(e.currentTarget, [
@@ -1078,11 +1096,37 @@ function openDraft(project = state.project) {
     'sep',
     { label: 'Add project', icon: 'plus', onClick: () => actions.addProject(pickProject) },
   ]) }, name, icon('chevronDown', 16));
-  const modelLabel = h('span', {}, 'Default model');
-  const modelBtn = h('button', { class: 'btn ghost xs', 'aria-haspopup': 'menu', title: 'Model', onClick: e => menu(e.currentTarget, MODELS.map(([id, label]) => ({
-    label: id ? label.split(':')[0] : 'Default model', sub: id ? label.split(': ')[1] : 'the usual one', icon: d.model === id ? 'check' : undefined,
-    onClick: () => { d.model = id; modelLabel.textContent = id ? label.split(':')[0] : 'Default model'; },
-  }))) }, modelLabel, icon('chevronDown', 12));
+  // A chip whose menu picks one of `items` ([value, label, sub, checked] or a heading); `pick` gets the value and label.
+  // btn.show(text) shows a value, in its accessible name too ("Model: Opus", not just "Opus").
+  const chip = (title, text, items, pick) => {
+    const label = h('span', {}, text);
+    const btn = h('button', { class: 'btn ghost xs', 'aria-haspopup': 'menu', title, onClick: () => menu(btn, items().map(x => x.heading ? x : ({
+      label: x[1], sub: x[2], checked: !!x[3], icon: x[3] ? 'check' : undefined, onClick: () => pick(x[0], x[1]),
+    }))) }, label, icon('chevronDown', 12));
+    btn.show = t => { label.textContent = t; btn.setAttribute('aria-label', `${title.split(':')[0]}: ${t}`); };
+    btn.show(text);
+    return btn;
+  };
+  const short = ([id, label], none) => [id, id ? label.split(':')[0] : none, id ? label.split(': ')[1] : 'the usual one'];
+  // Mode: a plain agent, the lead (plans tasks and starts workers) or a specialist. Both of the last run as Claude.
+  const MODES = () => [['', `${agentLabel(state.settings.defaultAgent)} agent`, 'One agent works on it'], ...(claudeReady() ? [['lead', 'Lead agent', 'Plans tasks and starts workers'],
+    ...(state.specialists.length ? [{ heading: 'Specialists' }, ...state.specialists.map(x => [x.id, x.name, x.role.split(':')[0]])] : [])] : [])];
+  const setMode = want => {
+    const [mode, text] = MODES().find(x => x[0] === want) ?? MODES()[0]; // no Claude: only the plain agent
+    d.mode = mode;
+    modeBtn.show(text);
+    const claude = !!mode || state.settings.defaultAgent === 'claude';
+    for (const b of [modelBtn, effortBtn, permBtn]) b.hidden = !claude; // other agents take none of these
+    input.placeholder = mode === 'lead' ? 'Describe the goal: the lead turns it into tasks and starts a worker for each' : 'Ask anything, @ to mention files';
+  };
+  const modeBtn = chip('Mode: who works on it', '', () => MODES().map(x => x.heading ? x : [...x, d.mode === x[0]]), setMode);
+  const modelBtn = chip('Model', 'Default model', () => MODELS.map(x => [...short(x, 'Default model'), d.model === x[0]]), (id, t) => { d.model = id; modelBtn.show(t); });
+  const effortBtn = chip('Effort', 'Default effort', () => EFFORTS.map(x => [...short(x, 'Default effort'), d.effort === x[0]]), (id, t) => { d.effort = id; effortBtn.show(t); });
+  // Permissions is a setting: the chip shows what's saved, so a failed save or a change in Settings shows true.
+  const PERMS = () => [{ heading: 'For every new Claude agent, in all spaces' }, ...PERMISSIONS.map(([id, label, sub]) => [id, label, sub, state.settings.permissionMode === id])];
+  const savedPerm = () => (PERMISSIONS.find(x => x[0] === state.settings.permissionMode) ?? PERMISSIONS[0])[1];
+  const permBtn = chip('Permissions: a Relay-wide setting, used by every new Claude agent in all spaces', savedPerm(), PERMS, id => actions.setSetting({ permissionMode: id }));
+  const offSettings = on('settings', () => (draft === d ? permBtn.show(savedPerm()) : offSettings()));
   const go = h('button', { class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send', disabled: true, onClick: () => send() }, icon('arrowUp', 16));
   const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'First message', placeholder: 'Ask anything, @ to mention files',
     onInput: () => { go.disabled = !input.value.trim(); },
@@ -1095,12 +1139,15 @@ function openDraft(project = state.project) {
     const prompt = input.value.trim();
     if (!prompt || go.disabled) return;
     go.disabled = true;
-    if (!(await newSession({ project: d.project, prompt, model: d.model }))) go.disabled = false; // selecting it closes the draft
+    const who = d.mode === 'lead' ? { agent: 'claude', role: 'lead', name: 'Lead agent' } : d.mode ? { agent: 'claude', specialist: d.mode } : {};
+    if (!(await newSession({ project: d.project, prompt, model: d.model, effort: d.effort, ...who }))) go.disabled = false; // selecting it closes the draft
   };
   d.el = h('div', { class: 'thread-draft' },
     h('h1', { class: 'draft-head' }, 'What should we build in ', projectBtn, '?'),
     h('div', { class: 'chat-composer' }, h('div', { class: 'chat-card' }, input,
-      h('div', { class: 'chat-controls' }, modelBtn, h('span', { class: 'grow' }), go))));
+      h('div', { class: 'chat-controls' }, modeBtn, modelBtn, effortBtn, permBtn, h('span', { class: 'grow' }), go))));
+  setMode(mode);
+  d.setMode = want => { setMode(want); input.focus(); };
   draft = d;
   actions.showView('agents');
   selectionChanged();

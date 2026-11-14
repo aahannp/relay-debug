@@ -220,20 +220,30 @@ export function askText(title, { label = '', value = '', placeholder = '', ok = 
   });
 }
 
-// A dropdown under `anchor`. Items: { label, icon, sub, onClick, disabled }, 'sep', or { heading }.
+// A dropdown under `anchor`. Items: { label, icon, sub, onClick, disabled, checked }, 'sep', or { heading }.
+// `checked` (true or false) makes the items a pick-one list. Up/Down/Home/End move, Enter picks, Escape closes.
 export function menu(anchor, items, { align = 'left' } = {}) {
   document.querySelector('.menu')?.remove();
   const r = anchor.getBoundingClientRect();
-  const m = h('div', { class: 'menu' }, items.map(item => {
-    if (item === 'sep') return h('div', { class: 'sep' });
-    if (item.heading) return h('div', { class: 'menu-label' }, item.heading);
-    return h('button', { class: 'menu-item', disabled: item.disabled, onClick: () => { m.remove(); item.onClick(); } },
+  const m = h('div', { class: 'menu', role: 'menu' }, items.map(item => {
+    if (item === 'sep') return h('div', { class: 'sep', role: 'separator' });
+    if (item.heading) return h('div', { class: 'menu-label', role: 'presentation' }, item.heading);
+    const radio = typeof item.checked === 'boolean';
+    return h('button', { class: 'menu-item', role: radio ? 'menuitemradio' : 'menuitem', 'aria-checked': radio && String(item.checked), disabled: item.disabled, onClick: () => { m.remove(); anchor.focus(); item.onClick(); } },
       item.icon && icon(item.icon, 15), h('span', {}, item.label), item.sub && h('span', { class: 'sub' }, item.sub));
   }));
+  const buttons = [...m.querySelectorAll('.menu-item:not(:disabled)')];
+  m.addEventListener('keydown', e => {
+    const i = buttons.indexOf(document.activeElement), n = buttons.length;
+    const at = { ArrowDown: i + 1, ArrowUp: (i < 0 ? n : i) - 1, Home: 0, End: n - 1 }[e.key];
+    if (at !== undefined && n) { e.preventDefault(); buttons[(at + n) % n].focus(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); m.remove(); anchor.focus(); }
+  });
   document.body.append(m);
   const width = m.offsetWidth;
   m.style.top = `${Math.min(r.bottom + 6, innerHeight - m.offsetHeight - 8)}px`;
   m.style.left = `${Math.max(8, Math.min(align === 'right' ? r.right - width : r.left, innerWidth - width - 8))}px`;
+  (buttons.find(b => b.getAttribute('aria-checked') === 'true') ?? buttons[0])?.focus({ preventScroll: true });
   setTimeout(() => document.addEventListener('mousedown', function off(e) {
     if (!m.contains(e.target)) { m.remove(); document.removeEventListener('mousedown', off); }
   }));

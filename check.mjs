@@ -1489,20 +1489,10 @@ esac
     fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ autoCompactWindow: 1_000_000 }));
     await paint();
     await upkeep();
-    assert.ok(!(await compacted()), 'a 1M window at 150K, with your auto-compact window at 1M (15%): nothing');
+    assert.ok(!(await compacted()), 'at 150K of the 400K it started with (37%), even with your auto-compact window now at 1M: nothing');
     fs.rmSync(path.join(claudeHome, 'settings.json'));
-    const kinds = db.settings.agentDefaults;
-    await ok('PATCH', '/api/settings', { agentDefaults: { ...kinds, lead: { ...kinds.lead, compactWindow: 200_000 } } });
+    s.compactWindow = 200_000; // as if it had started with the lead's window at 200K
     assert.equal(effectiveWindow(s), 200_000, "with the lead's window at 200K, 150K is 75%");
-    fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ autoCompactWindow: 100_000 }));
-    assert.equal(effectiveWindow(s), 100_000, 'your own smaller auto-compact window wins');
-    fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ autoCompactWindow: 'lots' }));
-    process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '120000';
-    assert.equal(effectiveWindow(s), 120_000, 'a non-number is ignored; the environment variable counts too');
-    process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = 'soon';
-    assert.equal(effectiveWindow(s), 200_000, 'and a non-number there is ignored as well');
-    delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
-    fs.rmSync(path.join(claudeHome, 'settings.json'));
     for (const [why, ...screen] of [['working a moment ago', '', undefined, 5000], ['you are typing', '', ' hello'], ['a spinner is up', '✶ Tempering…'],
       ['a permission prompt is up', 'Do you want to proceed?\r\n❯ 1. Yes\r\n  2. No\r\n']]) {
       await paint(...screen);
@@ -1535,7 +1525,7 @@ esac
     await screenOf(other.id, new RegExp(`\\[Message from Relay\\] leader was refreshed.*agent ${fresh.id}`), 'the other lead is told');
     assert.ok((await ok('GET', `/api/chats?project=${encodeURIComponent(repo)}`)).some(c => c.id === leader.chatId && !c.running), "the old lead's chat stays");
     assert.equal(sessions.get(fresh.id).upkeep, undefined, 'the fresh lead starts with no compactions');
-    await ok('PATCH', '/api/settings', { leadUpkeep: { ...UP, on: false }, agentDefaults: kinds });
+    await ok('PATCH', '/api/settings', { leadUpkeep: { ...UP, on: false } });
     for (const id of [fresh.id, other.id, worker.id]) await ok('DELETE', `/api/sessions/${id}`);
     db.tasks.splice(db.tasks.indexOf(db.tasks.find(t => t.id === task.id)), 1);
   }
@@ -1545,7 +1535,9 @@ esac
     delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
     fs.rmSync(path.join(claudeHome, 'settings.json'), { force: true });
     const pane = (role, id) => ({ id, kind: 'agent', agent: 'claude', role, worktree: null, project: repo, cwd: repo, claudeSessionId: randomUUID(), resume: false });
-    const settingsFor = role => (a => JSON.parse(fs.readFileSync(a[a.indexOf('--settings') + 1], 'utf8')))(command(pane(role, role ? 'ctxlead1' : 'ctxwork1'), '', null).args);
+    const fileOf = p => (a => JSON.parse(fs.readFileSync(a[a.indexOf('--settings') + 1], 'utf8')))(command(p, '', null).args);
+    const started = role => { const p = pane(role, role ? 'ctxlead1' : 'ctxwork1'); fileOf(p); return p; }; // its pane, as it (re)starts
+    const settingsFor = role => fileOf(pane(role, role ? 'ctxlead1' : 'ctxwork1'));
     assert.equal(settingsFor('lead').autoCompactWindow, 400_000, "a lead's settings file compacts at 400K");
     assert.equal(settingsFor(null).autoCompactWindow, 300_000, "a worker's at 300K");
     process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '500000';
@@ -1563,16 +1555,35 @@ esac
     assert.equal((await window('claude', '300000')).status, 400, 'and a string');
     assert.equal((await window('lead', '')).status, 200, "'' is Claude Code's own");
     assert.equal(settingsFor('lead').autoCompactWindow, undefined, 'which writes no key');
-    assert.equal(effectiveWindow({ role: 'lead', contextWindow: 1_000_000 }), 1_000_000, 'and lead upkeep then counts the real window');
+    assert.equal(effectiveWindow({ ...started('lead'), contextWindow: 1_000_000 }), 1_000_000, 'and lead upkeep then counts the real window');
     await ok('PATCH', '/api/settings', { agentDefaults: kinds });
-    assert.equal(effectiveWindow({ role: 'lead', contextWindow: 1_000_000 }), 400_000, "a lead's effective window is 400K");
-    assert.equal(effectiveWindow({ role: null, contextWindow: 1_000_000 }), 300_000, "a worker's 300K");
+    assert.equal(effectiveWindow({ ...started('lead'), contextWindow: 1_000_000 }), 400_000, "a lead's effective window is 400K");
+    assert.equal(effectiveWindow({ ...started(null), contextWindow: 1_000_000 }), 300_000, "a worker's 300K");
+    assert.equal(effectiveWindow(started('lead')), 400_000, 'before its status line reports a real window, a lead still counts 400K, not 200K');
+    assert.equal(effectiveWindow({ role: 'lead' }), 200_000, 'and with neither known, 200K');
+    { // a pane keeps the window it started with; a restart (its hook file written again) takes the new one
+      const p = { ...started('lead'), contextWindow: 1_000_000 };
+      await ok('PATCH', '/api/settings', { agentDefaults: { ...kinds, lead: { ...kinds.lead, compactWindow: 600_000 } } });
+      assert.equal(effectiveWindow(p), 400_000, 'raising the lead window does not move a running lead: Claude Code still compacts it at 400K');
+      assert.deepEqual([fileOf(p).autoCompactWindow, effectiveWindow(p)], [600_000, 600_000], 'started again (as after a Relay restart), its file and its window agree on 600K');
+      await ok('PATCH', '/api/settings', { agentDefaults: kinds });
+      fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ autoCompactWindow: 100_000 }));
+      assert.equal(effectiveWindow(started('lead')), 100_000, 'your own auto-compact window, when it starts, wins');
+      fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ autoCompactWindow: 'lots' }));
+      process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '120000';
+      assert.equal(effectiveWindow(started('lead')), 120_000, 'a non-number is ignored; the environment variable counts too');
+      process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = 'soon';
+      assert.equal(effectiveWindow(started('lead')), 400_000, 'and a non-number there is ignored as well');
+      delete process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+      fs.rmSync(path.join(claudeHome, 'settings.json'));
+    }
     const old = { agentDefaults: { claude: { model: 'sonnet', effort: '' }, lead: { model: 'opus', effort: 'high' } } };
-    const moved = migrated({ ...old, leadUpkeep: { on: true, compactAt: 70, windowCap: 500_000, replaceAfter: 3 } });
-    assert.deepEqual([moved.agentDefaults.lead.compactWindow, moved.agentDefaults.claude.compactWindow, moved.leadUpkeep], [500_000, 300_000, { on: true, compactAt: 70, replaceAfter: 3 }],
-      "an old lead upkeep windowCap becomes the lead's window, and goes");
-    assert.equal(migrated({ ...old, leadUpkeep: { on: false, compactAt: 70, windowCap: 200_000, replaceAfter: 3 } }).agentDefaults.lead.compactWindow, 400_000, 'its old 200K default just goes');
-    assert.equal(migrated({ ...old, leadUpkeep: { on: false, compactAt: 70, windowCap: 2_000_000, replaceAfter: 3 } }).agentDefaults.lead.compactWindow, 1_000_000, "kept within Claude Code's range");
+    const moved = migrated({ ...old, leadUpkeep: { on: true, compactAt: 70, windowCap: 150_000, replaceAfter: 3 } });
+    assert.deepEqual([moved.agentDefaults.lead.compactWindow, moved.agentDefaults.claude.compactWindow, moved.leadUpkeep], [150_000, 300_000, { on: true, compactAt: 70, replaceAfter: 3 }],
+      "an old lead upkeep windowCap under 200K (it only ever lowered the window) becomes the lead's window, and goes");
+    const capped = cap => migrated({ ...old, leadUpkeep: { on: false, compactAt: 70, windowCap: cap, replaceAfter: 3 } }).agentDefaults.lead.compactWindow;
+    assert.deepEqual([200_000, 500_000, 1_000_000, 2_000_000].map(capped), [400_000, 400_000, 400_000, 400_000], 'a cap of 200K or more did nothing, so it just goes: 400K');
+    assert.equal(capped(50_000), 100_000, "a small one is kept within Claude Code's range");
     assert.equal(STORE_DEFAULTS.settings.agentDefaults.lead.compactWindow, 400_000, 'without touching the defaults');
 
     // After a compaction the SessionStart hook's answer tells the agent who it is, its task and the board

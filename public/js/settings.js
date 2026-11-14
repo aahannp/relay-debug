@@ -176,8 +176,9 @@ const PAGES = {
           .sort((a, b) => a - b).map(n => [n, `Compact at ${n / 1000}K`])].map(([value, label]) => h('option', { value, selected: String(d.compactWindow) === String(value) }, label)));
         compact.addEventListener('change', () => save({ compactWindow: compact.value ? Number(compact.value) : '' }));
         return setting(`Model and effort for ${title}`, `${text} Agents can still ask for a lighter or stronger one for a job. A bigger window means fewer compactions; each turn re-reads more.`,
-          h('div', { class: 'row', style: { flexWrap: 'wrap' } }, popupSelect(model, `Model for ${title}`), popupSelect(effort, `Effort for ${title}`),
+          h('div', {}, h('div', { class: 'row', style: { flexWrap: 'wrap' } }, popupSelect(model, `Model for ${title}`), popupSelect(effort, `Effort for ${title}`),
             yours ? h('span', { class: 'muted', style: { fontSize: '12px' } }, `Your Claude Code sets ${Math.round(yours / 1000)}K; Relay uses it`) : popupSelect(compact, `When ${title} compact`)),
+            !yours && h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '4px' } }, 'Applies to agents started from now on.')),
           { agentDefaults: { ...s.agentDefaults, [kind]: DEFAULTS.agentDefaults[1][kind] } });
       }),
       setting('Permissions for Claude agents', PERMISSIONS.find(p => p[0] === s.permissionMode)?.[2] ?? '',

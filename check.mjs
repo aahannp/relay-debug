@@ -2131,9 +2131,36 @@ esac
     assert.deepEqual([W.summarize([tool('Read', 'Read a'), tool('Read', 'Read b')]).kind, W.summarize([{ kind: 'thinking' }]).kind], ['read', 'reasoning'], "the group's icon follows its kind");
     assert.deepEqual([12000, 65000, 3725000, 3605000, 120000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s', '1h 0m 5s', '2m 0s']);
     const { triggerAt, drawsScreen } = await import('./public/js/composer.js');
-    assert.deepEqual(['/help', '/model', '/model ', '/config', '/mcp', '/resume', '/context'].filter(t => !drawsScreen(t)), [], 'built-ins that draw their own screen go to the terminal');
+    assert.deepEqual(['/help', '/model', '/model ', '/config', '/mcp', '/resume', '/context', '/stats', '/continue', '/diff', '/btw x'].filter(t => !drawsScreen(t)), [],
+      'built-ins (and aliases) that draw their own screen go to the terminal');
     assert.deepEqual(['/model opus', '/effort high', '/resume abc', '/ponytail', '/m-skills:pr', '/plugin:foo', '/helpful', '/init', '/review', '/statusline', '/compact', '/clear', '/rename x', 'hello /help', '/'].filter(drawsScreen), [],
       'skills, plugin commands, prompt built-ins and a built-in given its value stay in the chat');
+    {
+      const { views } = await import('./public/js/composer.js');
+      const mem = new Map([['agent-desk:terminal-view', '["a"]'], ['agent-desk:chat-view', '["b"]']]);
+      const storage = { getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: k => mem.delete(k) };
+      const one = views(storage), two = views(storage); // two windows
+      one.dropOld();
+      assert.deepEqual([...mem.keys()], [], 'the old view lists are cleared');
+      assert.equal(one.follow('chat'), true, 'the setting arriving is followed');
+      one.note('a', false, true, false);
+      assert.equal(one.shows('a', true), true, 'an automatic switch to the terminal is not saved');
+      one.note('a', false, true, true);
+      two.note('b', false, true, true);
+      assert.deepEqual([one.shows('a', true), one.shows('b', true), two.shows('a', true)], [false, false, false], 'a switch you make is kept, and two windows keep each other\'s');
+      one.note('a', true, true, true);
+      assert.equal(one.shows('a', true), true, 'switching back to what the setting says forgets it');
+      one.forget('b');
+      assert.equal(one.shows('b', true), true, 'a closed thread is forgotten');
+      one.note('a', false, true, true);
+      assert.equal(one.follow('chat'), false, 'the same setting arriving again changes nothing');
+      assert.equal(one.shows('a', true), false);
+      assert.equal(one.follow('terminal'), true);
+      assert.equal(one.shows('a', false), false, 'changing the setting resets per-thread switches');
+      one.note('a', true, false, true);
+      assert.equal(one.follow('terminal', true), true, 'picking the same setting on purpose is followed');
+      assert.equal(one.shows('a', false), false, 'and resets per-thread switches too');
+    }
     assert.deepEqual([triggerAt('/com', 4), triggerAt('hi /x', 5), triggerAt('see @src/a', 10)],
       [{ kind: '/', query: 'com', start: 0, end: 4 }, null, { kind: '@', query: 'src/a', start: 4, end: 10 }], '`/` opens the menu only at the start of the box, `@` anywhere');
     assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');

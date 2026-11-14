@@ -1,6 +1,7 @@
 // Agents view: every agent, shell and browser pane for the project, tiled in a grid of real terminals.
 import { state, api, h, icon, avatar, on, emit, toast, guard, actions, command, commands, menu, askText, modal, confirmDialog, agentLabel, shortBranch, baseName, copy, chatTitle, meterView, openSpaces, spaceSummary, DRAG, MONO, STATUS_LABEL } from './ui.js';
 import { chatView } from './chat.js';
+import { views } from './composer.js';
 
 const panes = new Map(); // id -> pane (a session's terminal, or a browser)
 const seen = new Map(); // session id -> last status we told you about
@@ -21,13 +22,12 @@ const stored = (key, fallback) => { try { return JSON.parse(localStorage.getItem
 const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
 const hidden = new Set();
 const hiddenKeys = new Set(stored(HIDDEN, '[]'));
+// Saved from a fresh read, so another window's hidden panes aren't written over.
+const saveHidden = (key, on) => { const saved = new Set(stored(HIDDEN, '[]')); saved[on ? 'add' : 'delete'](key); store(HIDDEN, [...saved]); };
 let maxKey = stored(MAX, 'null'); // the pane that was maximised, until it shows up again
 // Claude panes you switched away from Settings' "Show threads as" (Chat or Terminal), by chat id like the hidden ones.
-// Changing the setting clears it. The older lists go once: 'agent-desk:chat-view' (from when Terminal was the default)
-// and 'agent-desk:terminal-view', which also saved the composer's automatic switches, so threads that flipped on their own open in chat again.
-const FLIPPED = 'agent-desk:view-flipped';
-const flipped = new Set(stored(FLIPPED, '[]'));
-try { localStorage.removeItem('agent-desk:chat-view'); localStorage.removeItem('agent-desk:terminal-view'); } catch {}
+const view = views(localStorage);
+view.dropOld();
 const chatByDefault = () => state.settings.threadView !== 'terminal';
 const keyOf = id => (s => s?.chatId ?? s?.shellId ?? id)(panes.get(id)?.session);
 
@@ -59,7 +59,7 @@ export function mount(root) {
   on('chats', () => { for (const p of panes.values()) if (p.kind === 'term') renderHead(p); });
   on('project', sync);
   on('settings', sync); // also picks up spaces opened or closed beside this one
-  on('settings', applyThreadView);
+  on('settings', () => applyThreadView());
   on('theme', retheme);
   on('layout', switchLayout);
   on('chats', refreshHeader);
@@ -199,18 +199,19 @@ command('New shell', () => newSession({ kind: 'shell' }), { icon: 'terminal' });
 command('New browser pane', () => newBrowser(), { icon: 'globe' });
 command('Hide this pane', () => (focusedId ? hidePane(focusedId) : toast('Click into a pane first', 'error')), { icon: 'eyeOff' });
 command('Show hidden panes', () => showHidden(), { icon: 'eye' });
-command('Show all threads as chat', () => actions.setSetting({ threadView: 'chat' }), { icon: 'message' });
-command('Show all threads as terminal', () => actions.setSetting({ threadView: 'terminal' }), { icon: 'terminal' });
+command('Show all threads as chat', () => actions.showThreadsAs('chat'), { icon: 'message' });
+command('Show all threads as terminal', () => actions.showThreadsAs('terminal'), { icon: 'terminal' });
 
 // Settings' "Show threads as" changed (or arrived): every open Claude pane follows it, and per-thread switches start over.
-let threadView;
-function applyThreadView() {
-  const now = state.settings.threadView;
-  if (!now || now === threadView) return;
-  if (threadView && flipped.size) { flipped.clear(); store(FLIPPED, []); }
-  threadView = now;
-  for (const p of panes.values()) if (p.showChat && !p.docked) p.showChat(chatByDefault() !== flipped.has(keyOf(p.id)), false);
+// Picking it on purpose (the palette, Settings) does that even when it already said so.
+function applyThreadView(force) {
+  if (!view.follow(state.settings.threadView, force)) return;
+  for (const p of panes.values()) if (p.showChat && !p.docked) p.showChat(view.shows(keyOf(p.id), chatByDefault()), false);
 }
+actions.showThreadsAs = async threadView => {
+  await actions.setSetting({ threadView });
+  if (state.settings.threadView === threadView) applyThreadView(true);
+};
 
 // ---------- Keeping panes in step with the server ----------
 // The grid shows the panes of each open space: the current one, and any you showed beside it from the sidebar.
@@ -320,7 +321,7 @@ function hidePane(id, on = true) {
   if (!panes.has(id) || on === hidden.has(id)) return;
   hidden[on ? 'add' : 'delete'](id);
   hiddenKeys[on ? 'add' : 'delete'](keyOf(id));
-  store(HIDDEN, [...hiddenKeys]);
+  saveHidden(keyOf(id), on);
   if (on && focusedId === id) setFocus(null);
   sync();
   emit('tick'); // the sidebar marks hidden panes
@@ -582,10 +583,7 @@ function terminalPane(s, parent) {
       el.classList.toggle('chat-mode', on);
       chatSeg.setAttribute('aria-pressed', on);
       termSeg.setAttribute('aria-pressed', !on);
-      if (remember) {
-        flipped[on === chatByDefault() ? 'delete' : 'add'](keyOf(id));
-        store(FLIPPED, [...flipped]);
-      }
+      view.note(keyOf(id), on, chatByDefault(), remember);
       if (on) p.chat.show();
       else { p.chat.hide(); p.fit(); }
       if (focus) focusPane(p);
@@ -594,7 +592,7 @@ function terminalPane(s, parent) {
   connect(p);
   panes.set(id, p);
   // A docked "Edit with AI" pane has no header, so no switch: it stays on the terminal.
-  p.showChat?.(!parent && chatByDefault() !== flipped.has(keyOf(id)), false);
+  p.showChat?.(!parent && view.shows(keyOf(id), chatByDefault()), false);
   layout();
   return p;
 }
@@ -726,8 +724,8 @@ const closePane = guard(async id => {
   const keeps = p.session.chatId ? ' The chat stays in the sidebar, so you can drag it back in to carry on.' : '';
   if (!p.session.exited && !(await confirmDialog(`Stop "${chatTitle(p.session)}"?`, `This ends the process running in this pane.${keeps}`, { label: 'Stop', danger: true }))) return;
   await api('DELETE', `/api/sessions/${id}`);
-  if (hiddenKeys.delete(keyOf(id))) store(HIDDEN, [...hiddenKeys]);
-  if (flipped.delete(keyOf(id))) store(FLIPPED, [...flipped]);
+  if (hiddenKeys.delete(keyOf(id))) saveHidden(keyOf(id), false);
+  view.forget(keyOf(id));
   dispose(id);
   actions.refresh('sessions');
 });

@@ -6,7 +6,7 @@ import { modelSelect, effortSelect } from './agents.js';
 import { openUpdates } from './updates.js';
 import { THEMES } from './themes.js';
 
-const PERMISSIONS = [
+export const PERMISSIONS = [
   ['default', 'Ask me', 'Agents ask before editing files or running commands. The safest choice.'],
   ['acceptEdits', 'Accept edits', 'File edits go through. Commands still ask first.'],
   ['auto', 'Auto', 'Claude decides what is safe to do without asking, and asks for the rest.'],

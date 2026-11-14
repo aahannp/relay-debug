@@ -90,7 +90,7 @@ function popover(button, ...content) {
 const popRow = (label, value) => h('div', { class: 'chat-pop-row' }, h('span', {}, label), h('span', { class: 'chat-pop-num' }, value));
 
 // The model chip's menu: what `/model <id>` switches the running Claude to.
-const MODELS = [['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
+const MODELS = [['opus', 'Opus'], ['fable', 'Fable'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']];
 const modelName = id => MODELS.find(([m]) => m === id)?.[1] ?? 'Default model';
 
 // Claude Code's built-in commands for the `/` menu; the project's and your own .claude/commands/*.md join them.

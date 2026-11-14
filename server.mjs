@@ -229,6 +229,7 @@ route('POST', '/api/context', ({ req, body }) => {
   if (!s) throw fail(404, 'Unknown session');
   const size = Number(body.context_window?.context_window_size);
   if (size >= 10_000 && size <= 100_000_000) s.contextWindow = size;
+  S.noteModel(s, body.model?.id);
   S.meterSoon(s);
   S.noteLimits(body.rate_limits);
   return {};
@@ -651,7 +652,7 @@ route('DELETE', '/api/artifacts/:id', ({ params }) => {
 });
 // "Edit with AI": a small-model chat beside the page, working on a copy of it and saving back by id. One per page:
 // asking again returns the one still running.
-const EDIT_MODELS = ['haiku', 'sonnet', 'opus'];
+const EDIT_MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
 const editSessions = id => [...S.sessions.values()].filter(s => s.artifactId === id);
 route('POST', '/api/artifacts/:id/edit-chat', async ({ req, params, body }) => {
   notFromAgent(req, 'open an edit chat');

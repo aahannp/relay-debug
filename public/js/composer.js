@@ -14,17 +14,54 @@ const APPROVAL = { Bash: 'Command approval', Edit: 'File change approval', Multi
   NotebookEdit: 'File change approval', Read: 'File read approval' };
 const squash = text => String(text ?? '').replace(/\s+/g, ' ').trim();
 
-// Claude Code's built-ins whose answer is only on its own screen: a dialog or picker (Ink, in claude 2.1.325), or text
-// the chat hides (/context, /cost, /usage). Skills, plugin commands (/m-skills:pr) and prompt built-ins (/init,
-// /review, /statusline) answer in the chat; /compact, /clear, /rename and the like just do it.
-const SCREENS = new Set(['add-dir', 'agents', 'bashes', 'bug', 'config', 'context', 'cost', 'doctor', 'export', 'feedback', 'help', 'hooks',
-  'ide', 'login', 'logout', 'mcp', 'memory', 'permissions', 'plugin', 'privacy-settings', 'release-notes', 'rewind', 'skills', 'status',
-  'tasks', 'terminal-setup', 'theme', 'upgrade', 'usage']);
+// Claude Code's built-ins (and their aliases) whose answer is only on their own screen: a dialog or picker (local-jsx or
+// Ink, in claude 2.1.325), or text the chat hides (/context, /cost, /version). Skills, plugin commands (/m-skills:pr) and
+// prompt built-ins (/init, /review) answer in the chat; /compact, /clear, /plan, /fast, /rename x and the like just do it.
+// An allowlist, not "every unknown command": the page can't tell a skill (/ponytail) from a built-in it hasn't heard of.
+const SCREENS = new Set(['add-dir', 'advisor', 'agents', 'allowed-tools', 'android', 'app', 'artifacts', 'background', 'bashes', 'bg',
+  'break-reminder', 'breaks', 'btw', 'bug', 'checkpoint', 'checkup', 'chrome', 'cloud-plugins', 'config', 'context', 'copy', 'cost',
+  'daemon', 'design-login', 'desktop', 'diff', 'doctor', 'downtime', 'export', 'extra-usage', 'feedback', 'help', 'hooks', 'ide',
+  'install', 'install-github-app', 'ios', 'login', 'logout', 'loops', 'marketplace', 'mcp', 'memory', 'mobile', 'passes',
+  'permissions', 'plugin', 'plugins', 'powerup', 'privacy-settings', 'rate-limit-options', 'rc', 'release-notes', 'remote',
+  'remote-control', 'remote-env', 'rewind', 'sandbox', 'scroll-speed', 'session', 'settings', 'setup-bedrock', 'setup-vertex',
+  'share', 'skill-doctor', 'skills', 'stats', 'status', 'tasks', 'teleport', 'terminal-setup', 'theme', 'tp', 'ultraplan',
+  'ultrareview', 'undo', 'upgrade', 'usage', 'usage-credits', 'version', 'web-setup', 'wellbeing', 'workflows']);
 // These open a picker only when typed alone: /model opus just switches.
-const PICKERS = new Set(['effort', 'model', 'output-style', 'resume']);
+const PICKERS = new Set(['autocompact', 'color', 'continue', 'effort', 'import', 'model', 'output-style', 'resume', 'tui', 'use-case']);
 export function drawsScreen(text) {
   const [, name, arg] = text.match(/^\/([\w-]+)(?:\s+([\s\S]*))?$/) ?? [];
   return SCREENS.has(name) || (PICKERS.has(name) && !arg?.trim());
+}
+
+// Which way each Claude thread shows (agents.js), kept in `storage` (localStorage): the threads you switched away from
+// Settings' "Show threads as", by chat id. Read afresh for every change, so two windows don't write over each other's.
+const FLIPPED = 'agent-desk:view-flipped';
+export function views(storage) {
+  const flipped = () => { try { return new Set(JSON.parse(storage.getItem(FLIPPED) ?? '[]')); } catch { return new Set(); } };
+  const save = list => { try { storage.setItem(FLIPPED, JSON.stringify([...list])); } catch {} };
+  let last; // the setting the open threads follow
+  return {
+    shows: (key, chat) => chat !== flipped().has(key), // true for chat; `chat` is what the setting says
+    // Only a switch you make (remember) is kept: the trip to a built-in's screen (drawsScreen) isn't.
+    note(key, on, chat, remember) {
+      if (!remember) return;
+      const list = flipped();
+      list[on === chat ? 'delete' : 'add'](key);
+      save(list);
+    },
+    forget(key) { const list = flipped(); if (list.delete(key)) save(list); },
+    // The setting arrived or changed: true when the open threads should follow it. Changing it, or picking it again
+    // (force), starts the per-thread switches over.
+    follow(now, force = false) {
+      if (!now || (now === last && !force)) return false;
+      if (last || force) save([]);
+      last = now;
+      return true;
+    },
+    // Once: 'agent-desk:chat-view' (from when Terminal was the default) and 'agent-desk:terminal-view', which also kept
+    // the trips to a built-in's screen, so threads that flipped on their own open in chat again.
+    dropOld() { try { storage.removeItem('agent-desk:chat-view'); storage.removeItem('agent-desk:terminal-view'); } catch {} },
+  };
 }
 
 // What the docked panel shows for the menu on Claude's screen (menuOf in lib/sessions.mjs: { lines, multi,
@@ -114,6 +151,9 @@ const COMMANDS = [['add-dir', 'Add a working directory'], ['agents', 'Manage sub
   ['memory', 'Edit memory files'], ['model', 'Switch the model'], ['permissions', 'Manage tool permissions'],
   ['resume', 'Resume an earlier conversation'], ['review', 'Review a pull request'], ['rewind', 'Rewind the conversation or code'],
   ['status', 'Show version, model and account'], ['usage', 'Show plan usage limits']];
+// Every built-in the page knows: the described ones, then the rest of SCREENS and PICKERS, and the chat-side ones named above.
+const BUILTINS = [...COMMANDS, ...[...SCREENS, ...PICKERS, 'plan', 'fast', 'rename'].filter(n => !COMMANDS.some(([c]) => c === n))
+  .map(n => [n, drawsScreen(`/${n}`) ? 'Opens in the terminal' : 'Built-in command'])];
 // The word being typed at the caret, if it opens the menu: `/` at the very start of the box, or `@` anywhere.
 export function triggerAt(text, caret) {
   const m = /(^|\s)([@/])(\S*)$/.exec(text.slice(0, caret));
@@ -274,11 +314,11 @@ export function composer(p) {
     if (!listings.has(dir)) listings.set(dir, api('GET', `/api/fs/list?path=${encodeURIComponent(dir)}`).catch(() => []));
     return listings.get(dir);
   };
-  const own = async dir => (await list(dir)).filter(f => !f.dir && f.name.endsWith('.md')).map(f => [f.name.slice(0, -3), dir.startsWith('~') ? 'Your command' : 'Project command']);
+  let own = null; // the project's and your .claude/commands, asked once
   async function itemsFor(t) {
     const q = t.query.toLowerCase();
     if (t.kind === '/') {
-      const all = [...COMMANDS, ...await own(`${p.session.cwd}/.claude/commands`), ...await own('~/.claude/commands')];
+      const all = [...BUILTINS, ...await (own ??= api('GET', `/api/commands?cwd=${encodeURIComponent(p.session.cwd)}`).catch(() => []))];
       return all.filter(([name]) => name.toLowerCase().includes(q)).sort(([a], [b]) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q))
         .map(([name, desc]) => ({ label: `/${name}`, desc, icon: 'terminal', text: `/${name} ` }));
     }

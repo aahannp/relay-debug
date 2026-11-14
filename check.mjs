@@ -769,6 +769,13 @@ Ready to submit your answers?
   assert.equal(promptSuggestion(await box('Name one')), null, 'typed text is no suggestion');
   assert.equal(promptSuggestion(await box('\x1b[2mName one \x1b[0manimal')), null, 'nor is dim text with typed text in the box');
   assert.equal(promptSuggestion(await box('')), null, 'an empty box suggests nothing');
+  // claude 2.1.325 draws its caret on the first letter: inverse (bytes captured from the real CLI) or plain.
+  assert.equal(promptSuggestion(await box('\x1b[7mN\x1b[27m\x1b[2mame one animal')), 'Name one animal', 'a suggestion under an inverse caret is read');
+  assert.equal(promptSuggestion(await box('N\x1b[2mame one animal')), 'Name one animal', 'and under a plain caret');
+  assert.equal(promptSuggestion(await box('N')), null, 'a single typed letter is no suggestion');
+  assert.equal(promptSuggestion(await box('\x1b[7mT\x1b[27m\x1b[2mry "refactor <filepath>"')), null, 'the real startup placeholder is no suggestion');
+  for (const h of ['Message @worker…', 'Taking your message back…', 'Press up to edit queued messages', 'Press Enter to send them now'])
+    assert.equal(promptSuggestion(await box(`\x1b[2m${h}`)), null, `"${h}" is no suggestion`);
   assert.equal(promptSuggestion(await box('\x1b[2mName one animal', '✶ Tempering… (3s)')), null, 'nothing while the spinner runs');
   assert.equal(promptSuggestion(prompt), null, 'nothing while a menu is up');
   const busy = await box('\x1b[2mName one animal');
@@ -2464,9 +2471,36 @@ esac
     assert.deepEqual([W.summarize([tool('Read', 'Read a'), tool('Read', 'Read b')]).kind, W.summarize([{ kind: 'thinking' }]).kind], ['read', 'reasoning'], "the group's icon follows its kind");
     assert.deepEqual([12000, 65000, 3725000, 3605000, 120000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s', '1h 0m 5s', '2m 0s']);
     const { triggerAt, drawsScreen } = await import('./public/js/composer.js');
-    assert.deepEqual(['/help', '/model', '/model ', '/config', '/mcp', '/resume', '/context'].filter(t => !drawsScreen(t)), [], 'built-ins that draw their own screen go to the terminal');
+    assert.deepEqual(['/help', '/model', '/model ', '/config', '/mcp', '/resume', '/context', '/stats', '/continue', '/diff', '/btw x'].filter(t => !drawsScreen(t)), [],
+      'built-ins (and aliases) that draw their own screen go to the terminal');
     assert.deepEqual(['/model opus', '/effort high', '/resume abc', '/ponytail', '/m-skills:pr', '/plugin:foo', '/helpful', '/init', '/review', '/statusline', '/compact', '/clear', '/rename x', 'hello /help', '/'].filter(drawsScreen), [],
       'skills, plugin commands, prompt built-ins and a built-in given its value stay in the chat');
+    {
+      const { views } = await import('./public/js/composer.js');
+      const mem = new Map([['agent-desk:terminal-view', '["a"]'], ['agent-desk:chat-view', '["b"]']]);
+      const storage = { getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: k => mem.delete(k) };
+      const one = views(storage), two = views(storage); // two windows
+      one.dropOld();
+      assert.deepEqual([...mem.keys()], [], 'the old view lists are cleared');
+      assert.equal(one.follow('chat'), true, 'the setting arriving is followed');
+      one.note('a', false, true, false);
+      assert.equal(one.shows('a', true), true, 'an automatic switch to the terminal is not saved');
+      one.note('a', false, true, true);
+      two.note('b', false, true, true);
+      assert.deepEqual([one.shows('a', true), one.shows('b', true), two.shows('a', true)], [false, false, false], 'a switch you make is kept, and two windows keep each other\'s');
+      one.note('a', true, true, true);
+      assert.equal(one.shows('a', true), true, 'switching back to what the setting says forgets it');
+      one.forget('b');
+      assert.equal(one.shows('b', true), true, 'a closed thread is forgotten');
+      one.note('a', false, true, true);
+      assert.equal(one.follow('chat'), false, 'the same setting arriving again changes nothing');
+      assert.equal(one.shows('a', true), false);
+      assert.equal(one.follow('terminal'), true);
+      assert.equal(one.shows('a', false), false, 'changing the setting resets per-thread switches');
+      one.note('a', true, false, true);
+      assert.equal(one.follow('terminal', true), true, 'picking the same setting on purpose is followed');
+      assert.equal(one.shows('a', false), false, 'and resets per-thread switches too');
+    }
     assert.deepEqual([triggerAt('/com', 4), triggerAt('hi /x', 5), triggerAt('see @src/a', 10)],
       [{ kind: '/', query: 'com', start: 0, end: 4 }, null, { kind: '@', query: 'src/a', start: 4, end: 10 }], '`/` opens the menu only at the start of the box, `@` anywhere');
     assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');
@@ -2495,6 +2529,15 @@ esac
     assert.deepEqual([trust.kind, trust.options.map(o => o.label)], ['menu', ['No, exit', 'Yes, I trust this folder']], 'the trust dialog, with no pending tool, is a plain menu');
     assert.equal(panelOf(null, null).kind, 'terminal', "a menu that couldn't be read sends you to the terminal");
     assert.ok(!/var\(--accent/.test(fs.readFileSync(new URL('./public/composer.css', import.meta.url), 'utf8')), 'the composer never uses the pink accent');
+    // .chat-composer drops clicks and only its lane takes them back; the new-thread box (agents.js) has no lane, so its card must
+    assert.match(fs.readFileSync(new URL('./public/thread.css', import.meta.url), 'utf8'), /\.thread-draft \.chat-card \{ pointer-events: auto;/, 'the new-thread box takes mouse clicks');
+    // The `/` menu's own commands: a missing folder is none (no 404), and yours come from CLAUDE_CONFIG_DIR
+    const cmds = path.join(process.env.CLAUDE_CONFIG_DIR, 'commands');
+    assert.deepEqual(await ok('GET', `/api/commands?cwd=${encodeURIComponent(path.join(tmp, 'nowhere'))}`), [], 'no commands folders: an empty list');
+    fs.mkdirSync(cmds, { recursive: true });
+    fs.writeFileSync(path.join(cmds, 'ship.md'), 'Ship it');
+    assert.deepEqual(await ok('GET', `/api/commands?cwd=${encodeURIComponent(path.join(tmp, 'nowhere'))}`), [['ship', 'Your command']], "yours, from CLAUDE_CONFIG_DIR");
+    fs.rmSync(cmds, { recursive: true });
   }
   { // Finder's Open in Relay Quick Action: valid plists, written once, rewritten when it changes, nothing else touched
     const services = path.join(tmp, 'Services');

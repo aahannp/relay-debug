@@ -803,6 +803,9 @@ route('GET', '/api/fs/list', ({ query }) => {
     .map(e => ({ name: e.name, path: path.join(dir, e.name), dir: e.isDirectory() }))
     .sort((a, b) => b.dir - a.dir || a.name.localeCompare(b.name));
 });
+// The `/` menu's own commands: <cwd>/.claude/commands and the config folder's (CLAUDE_CONFIG_DIR's, if set). A missing folder is none.
+route('GET', '/api/commands', ({ query }) => [[path.join(expand(query.get('cwd')), '.claude', 'commands'), 'Project command'], [path.join(S.claudeHome(), 'commands'), 'Your command']]
+  .flatMap(([dir, desc]) => isDir(dir) ? fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isFile() && e.name.endsWith('.md')).map(e => [e.name.slice(0, -3), desc]) : []));
 route('GET', '/api/fs/file', ({ query }) => {
   const file = expand(query.get('path'));
   const stat = fs.statSync(file, { throwIfNoEntry: false });

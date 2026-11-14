@@ -229,7 +229,7 @@ export function menu(anchor, items, { align = 'left' } = {}) {
     if (item === 'sep') return h('div', { class: 'sep', role: 'separator' });
     if (item.heading) return h('div', { class: 'menu-label', role: 'presentation' }, item.heading);
     const radio = typeof item.checked === 'boolean';
-    return h('button', { class: 'menu-item', role: radio ? 'menuitemradio' : 'menuitem', 'aria-checked': radio && String(item.checked), disabled: item.disabled, onClick: () => { m.remove(); item.onClick(); } },
+    return h('button', { class: 'menu-item', role: radio ? 'menuitemradio' : 'menuitem', 'aria-checked': radio && String(item.checked), disabled: item.disabled, onClick: () => { m.remove(); anchor.focus(); item.onClick(); } },
       item.icon && icon(item.icon, 15), h('span', {}, item.label), item.sub && h('span', { class: 'sub' }, item.sub));
   }));
   const buttons = [...m.querySelectorAll('.menu-item:not(:disabled)')];

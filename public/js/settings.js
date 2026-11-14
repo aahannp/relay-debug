@@ -125,7 +125,7 @@ const PAGES = {
         toggle(s.sidebarHidden !== true, on => set({ sidebarHidden: !on })), reset('sidebarHidden')),
       setting('Show threads as', 'Every Claude thread, open now or later. A thread\'s own Chat or Terminal switch still changes just that one, until you change this.',
         h('div', { class: 'segmented', role: 'group', 'aria-label': 'Show threads as' }, [['chat', 'Chat'], ['terminal', 'Terminal']].map(([id, label]) =>
-          h('button', { class: s.threadView === id ? 'on' : '', 'aria-pressed': String(s.threadView === id), onClick: () => set({ threadView: id }) }, label))), reset('threadView')),
+          h('button', { class: s.threadView === id ? 'on' : '', 'aria-pressed': String(s.threadView === id), onClick: () => actions.showThreadsAs(id) }, label))), reset('threadView')),
       setting('Suggest the next prompt', 'After a turn, Claude Code may suggest what to ask next, in grey in its input box and in the chat composer. Tab takes it. Applies to agents started from now on.',
         toggle(s.promptSuggestions !== false, on => set({ promptSuggestions: on })), reset('promptSuggestions')),
       setting('Animated cursor', 'A custom cursor that reacts to what you point at. It steps aside over terminals and text.',

@@ -49,4 +49,5 @@
 .draft-project svg { color: var(--dim); }
 .draft-project:focus-visible, .thread-crumbs button:focus-visible { outline: 2px solid var(--ring, var(--info)); outline-offset: 2px; }
 .thread-draft .chat-composer { padding-bottom: 0; }
+.thread-draft .chat-card { pointer-events: auto; } /* no .chat-composer-lane here, so the card turns clicks back on itself */
 .thread-draft .chat-controls { flex-wrap: wrap; gap: 4px; } /* mode, model, effort and permissions wrap on a phone */

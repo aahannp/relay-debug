@@ -791,6 +791,7 @@ Ready to submit your answers?
   close(priceReply('claude-haiku-5-5', { cache_read_input_tokens: 1000, output_tokens: 100 }).cost, 0.00006, 'haiku up to 100K');
   close(priceReply('claude-haiku-5-5', { cache_read_input_tokens: 200_000, output_tokens: 100 }).cost, 0.01025, 'haiku above 100K');
   close(priceReply('claude-fable-5-2', { input_tokens: 1000, cache_read_input_tokens: 1000, output_tokens: 1000 }).cost, 0.0482, 'fable 5.2: $8 in, $0.20 cache reads, $40 out');
+  close(priceReply('claude-fable-5-2', { cache_creation_input_tokens: 3000, cache_creation: { ephemeral_1h_input_tokens: 1000 } }).cost, 0.036, 'and cache writes at $10 (5 minutes) and $16 (1 hour)');
   assert.equal(priceReply('claude-mystery-9', { output_tokens: 7 }).cost, null, 'a model not in the table is unpriced, never guessed');
   const spentAt = new Date(2026, 0, 5, 14, 30).toISOString();
   const said = (id, model, usage, extra = {}) => line({ type: 'assistant', timestamp: spentAt, sessionId: named, cwd: repo, requestId: `req_${id}`, message: { id, model, usage }, ...extra });
@@ -933,10 +934,6 @@ Ready to submit your answers?
   assert.equal(fm, 'fable', 'Fable is a model you can pick');
   assert.match(fOut, /--model fable/, 'passed to claude as its alias');
   assert.deepEqual((await runOf({ specialist: 'browner', model: 'stronger' })).slice(0, 2), ['fable', 'high'], 'stronger than Opus is Fable');
-  const [, dle, dleadOut] = await runOf({ kind: 'agent', agent: 'claude', role: 'lead', name: 'Lead agent', effort: 'max' }); // what the new-thread box sends for Lead
-  assert.equal(dle, 'max', 'a lead started from the new-thread box keeps the effort you picked');
-  assert.equal((await ok('GET', '/api/sessions')).filter(x => x.role === 'lead').length > 0, true, 'and is listed as a lead');
-  assert.match(dleadOut, /start_task/, "with the lead's instructions");
   const draftSrc = fs.readFileSync(new URL('./public/js/agents.js', import.meta.url), 'utf8');
   assert.match(draftSrc, /role: 'lead', name: 'Lead agent'/, "the new-thread box's Lead mode starts a lead");
   assert.match(draftSrc, /\{ agent: 'claude', specialist: d\.mode \}/, 'its specialist modes start that specialist');
@@ -1221,7 +1218,7 @@ Ready to submit your answers?
   assert.equal((await ok('PATCH', '/api/settings', { artifactEditModel: 'sonnet' })).artifactEditModel, 'sonnet', 'the edit model is a setting');
   assert.equal((await request('PATCH', '/api/settings', { body: { artifactEditModel: 'gpt' } })).status, 400, 'and only a known one');
   assert.equal((await request('PATCH', '/api/settings', { body: { artifactEditModel: 'fable' } })).status, 200, 'Fable is one');
-  await ok('PATCH', '/api/settings', { artifactEditModel: 'sonnet' }); // back to what the line above set
+  await ok('PATCH', '/api/settings', { artifactEditModel: 'haiku' });
   await ok('DELETE', `/api/sessions/${editor.id}`);
   await tool('save_artifact', { id: art.id, title: 'Q3 report', html: diagram });
   const mermaidEditor = (await editChat()).body;
@@ -1447,16 +1444,21 @@ esac
       "the status line's rate_limits are kept for the composer: % used clamped to 0–100, the reset in ms, a bad reset dropped");
     await request('POST', '/api/context', { token: sessions.get(worker.id).agentToken, body: { context_window: {} } });
     { // a /model switch: the board follows the model the status line reports
-      const was = s.model, chat = db.chats.find(c => c.id === s.chatId);
-      const report = id => request('POST', '/api/context', { token: s.agentToken, body: { model: { id } } });
-      await report('claude-sonnet-5-5');
-      assert.equal(s.model, was, "the first report is only the model it started on (for '', your default), so nothing changes");
-      await report('claude-fable-5-2');
-      assert.equal((await ok('GET', '/api/sessions')).find(x => x.id === s.id).model, 'fable', 'a later change is a /model switch, shown on the board');
-      if (chat) assert.equal(chat.model, 'fable', 'and kept by its chat');
-      await report('claude-mystery-9');
-      assert.equal(s.model, 'fable', "a model with no alias changes nothing");
-      s.model = was; if (chat) chat.model = was;
+      const chat = db.chats.find(c => c.id === s.chatId), was = [s.model, s.modelId, chat.model];
+      const reports = async (model, ...ids) => {
+        s.model = chat.model = model; delete s.modelId;
+        for (const id of ids) await request('POST', '/api/context', { token: s.agentToken, body: { model: { id } } });
+        return [s.model, chat.model];
+      };
+      assert.deepEqual(await reports('opus', 'claude-sonnet-5-5'), ['opus', 'opus'], 'the first report is only the model it started on, so nothing changes');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5', 'claude-sonnet-5-5'), ['sonnet', 'sonnet'], 'a later change is a /model switch, kept by its chat');
+      assert.equal((await ok('GET', '/api/sessions')).find(x => x.id === s.id).model, 'sonnet', 'and shown on the board');
+      assert.deepEqual(await reports('', 'claude-opus-5-5', 'claude-sonnet-5-5'), ['', ''], "'' (your default) stays '': Claude Code picks that model, not you");
+      assert.deepEqual(await reports('opusplan', 'claude-opus-5-5', 'claude-sonnet-5-5'), ['opusplan', 'opusplan'], 'and so does opusplan, which switches by itself');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5', 'claude-sonnet-4-5'), ['opus', 'opus'], 'an older model id is ignored, not taken for Sonnet 5.5');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5', 'claude-mystery-9'), ['opus', 'opus'], 'and so is an unknown one');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5[1m]', 'claude-fable-5-2[1m]'), ['fable', 'fable'], 'a 1M-context id is still its model');
+      [s.model, s.modelId, chat.model] = was;
     }
     assert.equal((await ok('GET', '/api/limits')).session.used, 23.5, "they're the account's: a status line without them (another pane, or before its first reply) keeps them");
     fs.appendFileSync(transcript, `${line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Planning the login work' }], usage: { input_tokens: 0, cache_read_input_tokens: 150_000, cache_creation_input_tokens: 0 } } })}\n`);

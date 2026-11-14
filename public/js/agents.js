@@ -1054,7 +1054,7 @@ const controls = () => [
   ['squareMenu', 'Toggle thread details', e => actions.threadDetails?.(e.currentTarget)],
   ['panelBottom', 'Toggle terminal drawer (⌘J)', () => actions.toggleDrawer?.()],
   ['panelRight', 'Toggle right panel (⌘D)', () => actions.toggleDiff?.()],
-  ['star', 'Start a lead agent: it plans tasks and starts workers', () => openDraft(undefined, 'lead')],
+  ...(claudeReady() ? [['star', 'Start a lead agent: it plans tasks and starts workers', () => (draft ? draft.setMode('lead') : openDraft(undefined, 'lead'))]] : []),
   ['layoutGrid', 'Show all threads in a grid', () => actions.setLayout('grid')],
 ].map(([name, label, onClick]) => h('button', { class: 'icon-btn', title: label, 'aria-label': label, onClick }, icon(name, 16)));
 
@@ -1080,29 +1080,37 @@ function openDraft(project = state.project, mode = '') {
     'sep',
     { label: 'Add project', icon: 'plus', onClick: () => actions.addProject(pickProject) },
   ]) }, name, icon('chevronDown', 16));
-  // A chip whose menu picks one of `items` ([value, label, sub] or a heading); `pick` gets the value.
+  // A chip whose menu picks one of `items` ([value, label, sub, checked] or a heading); `pick` gets the value and label.
+  // btn.show(text) shows a value, in its accessible name too ("Model: Opus", not just "Opus").
   const chip = (title, text, items, pick) => {
     const label = h('span', {}, text);
     const btn = h('button', { class: 'btn ghost xs', 'aria-haspopup': 'menu', title, onClick: () => menu(btn, items().map(x => x.heading ? x : ({
-      label: x[1], sub: x[2], icon: x[3] ? 'check' : undefined, onClick: () => { label.textContent = x[1]; pick(x[0]); },
+      label: x[1], sub: x[2], checked: !!x[3], icon: x[3] ? 'check' : undefined, onClick: () => pick(x[0], x[1]),
     }))) }, label, icon('chevronDown', 12));
+    btn.show = t => { label.textContent = t; btn.setAttribute('aria-label', `${title.split(':')[0]}: ${t}`); };
+    btn.show(text);
     return btn;
   };
   const short = ([id, label], none) => [id, id ? label.split(':')[0] : none, id ? label.split(': ')[1] : 'the usual one'];
   // Mode: a plain agent, the lead (plans tasks and starts workers) or a specialist. Both of the last run as Claude.
-  const MODES = () => [['', `${agentLabel(state.settings.defaultAgent)} agent`, 'One agent works on it'], ['lead', 'Lead agent', 'Plans tasks and starts workers'],
-    ...(claudeReady() && state.specialists.length ? [{ heading: 'Specialists' }, ...state.specialists.map(x => [x.id, x.name, x.role.split(':')[0]])] : [])];
-  const setMode = mode => {
+  const MODES = () => [['', `${agentLabel(state.settings.defaultAgent)} agent`, 'One agent works on it'], ...(claudeReady() ? [['lead', 'Lead agent', 'Plans tasks and starts workers'],
+    ...(state.specialists.length ? [{ heading: 'Specialists' }, ...state.specialists.map(x => [x.id, x.name, x.role.split(':')[0]])] : [])] : [])];
+  const setMode = want => {
+    const [mode, text] = MODES().find(x => x[0] === want) ?? MODES()[0]; // no Claude: only the plain agent
     d.mode = mode;
+    modeBtn.show(text);
     const claude = !!mode || state.settings.defaultAgent === 'claude';
     for (const b of [modelBtn, effortBtn, permBtn]) b.hidden = !claude; // other agents take none of these
     input.placeholder = mode === 'lead' ? 'Describe the goal: the lead turns it into tasks and starts a worker for each' : 'Ask anything, @ to mention files';
   };
-  const modeBtn = chip('Mode: who works on it', MODES().find(x => x[0] === mode)?.[1] ?? MODES()[0][1], () => MODES().map(x => x.heading ? x : [...x, d.mode === x[0]]), setMode);
-  const modelBtn = chip('Model', 'Default model', () => MODELS.map(x => [...short(x, 'Default model'), d.model === x[0]]), id => { d.model = id; });
-  const effortBtn = chip('Effort', 'Default effort', () => EFFORTS.map(x => [...short(x, 'Default effort'), d.effort === x[0]]), id => { d.effort = id; });
+  const modeBtn = chip('Mode: who works on it', '', () => MODES().map(x => x.heading ? x : [...x, d.mode === x[0]]), setMode);
+  const modelBtn = chip('Model', 'Default model', () => MODELS.map(x => [...short(x, 'Default model'), d.model === x[0]]), (id, t) => { d.model = id; modelBtn.show(t); });
+  const effortBtn = chip('Effort', 'Default effort', () => EFFORTS.map(x => [...short(x, 'Default effort'), d.effort === x[0]]), (id, t) => { d.effort = id; effortBtn.show(t); });
+  // Permissions is a setting: the chip shows what's saved, so a failed save or a change in Settings shows true.
   const PERMS = () => [{ heading: 'For every new Claude agent, in all spaces' }, ...PERMISSIONS.map(([id, label, sub]) => [id, label, sub, state.settings.permissionMode === id])];
-  const permBtn = chip('Permissions: a Relay-wide setting, used by every new Claude agent in all spaces', (PERMISSIONS.find(x => x[0] === state.settings.permissionMode) ?? PERMISSIONS[0])[1], PERMS, id => actions.setSetting({ permissionMode: id }));
+  const savedPerm = () => (PERMISSIONS.find(x => x[0] === state.settings.permissionMode) ?? PERMISSIONS[0])[1];
+  const permBtn = chip('Permissions: a Relay-wide setting, used by every new Claude agent in all spaces', savedPerm(), PERMS, id => actions.setSetting({ permissionMode: id }));
+  const offSettings = on('settings', () => (draft === d ? permBtn.show(savedPerm()) : offSettings()));
   const go = h('button', { class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send', disabled: true, onClick: () => send() }, icon('arrowUp', 16));
   const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'First message', placeholder: 'Ask anything, @ to mention files',
     onInput: () => { go.disabled = !input.value.trim(); },
@@ -1123,6 +1131,7 @@ function openDraft(project = state.project, mode = '') {
     h('div', { class: 'chat-composer' }, h('div', { class: 'chat-card' }, input,
       h('div', { class: 'chat-controls' }, modeBtn, modelBtn, effortBtn, permBtn, h('span', { class: 'grow' }), go))));
   setMode(mode);
+  d.setMode = want => { setMode(want); input.focus(); };
   draft = d;
   actions.showView('agents');
   selectionChanged();

@@ -6,7 +6,7 @@
 // From ChatComposer, ComposerCommandMenu, ComposerAttachmentStrip, ComposerControl, ComposerPendingApprovalPanel, ComposerPendingApprovalActions,
 // ComposerPendingUserInputPanel, ComposerPrimaryActions, ContextWindowMeter, ComposerUsageLimits (LimitWindows)
 // and UsageLimitRecoveryBanner.
-import { api, h, icon, menu, money, on } from './ui.js';
+import { state, api, h, icon, menu, money, on } from './ui.js';
 
 // Control characters out (newlines and tabs stay), so a paste can't end the paste brackets early (as lib/sessions.mjs does).
 const CONTROL = /\x1b|[\x00-\x08\x0b-\x1f\x7f-\x9f]/g;
@@ -113,7 +113,8 @@ export function composer(p) {
   let shown = ''; // the menu it was built from, so a feed read with the same menu leaves it alone
   let choosing = false;
   let working = false;
-  let model = p.session.model; // picked here, it's ours: the session keeps the model it started with
+  let model = p.session.model; // picked here, it's ours until the board's changes (a /model typed in the terminal)
+  let boardModel = model;
 
   const dock = h('div', { class: 'chat-dock', hidden: true });
   const drawer = h('div', { class: 'chat-dock chat-menu', id: `chat-menu-${++pops}`, role: 'listbox', hidden: true, onPointerdown: e => e.preventDefault() });
@@ -135,6 +136,11 @@ export function composer(p) {
   const usage = popover(limitsButton);
   const limitBanner = h('div', { class: 'chat-dock chat-limit', role: 'status', hidden: true });
   const modelLabel = h('span', {}, modelName(model));
+  const offModel = on('sessions', () => {
+    const s = state.sessions.find(x => x.id === p.session.id);
+    if (!s) return offModel(); // the session is gone
+    if (s.model !== boardModel) { boardModel = model = s.model; modelLabel.textContent = modelName(model); }
+  });
   const chip = h('button', { type: 'button', class: 'chat-control chat-model', 'aria-haspopup': 'menu', title: 'Model', onClick: () => pickModel() },
     icon('sparkles', 16), modelLabel, icon('chevronDown', 14));
   // Attach: starts an `@` mention at the caret, whose menu picks a file or folder; Claude Code reads what it names.
@@ -311,7 +317,7 @@ export function composer(p) {
 
   // The menu opens above the chip, as the composer sits at the foot of the window.
   function pickModel() {
-    menu(chip, MODELS.map(([id, name]) => ({ label: name, icon: id === model ? 'check' : null, onClick: () => {
+    menu(chip, MODELS.map(([id, name]) => ({ label: name, checked: id === model, icon: id === model ? 'check' : null, onClick: () => {
       if (id === model || !type(`/model ${id}`)) return;
       model = id;
       modelLabel.textContent = name;

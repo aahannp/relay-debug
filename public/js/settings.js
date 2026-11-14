@@ -19,7 +19,7 @@ const DEFAULTS = {
   sidebarHidden: ['Sidebar', false], fancyCursor: ['Animated cursor', false], scrollSpeed: ['Scroll speed', 1],
   theme: ['Theme', 't3dark'], fontSize: ['Text size', 13],
   defaultAgent: ['Default agent', 'claude'], agentDefaults: ['Model and effort', { claude: { model: 'sonnet', effort: '' }, lead: { model: 'opus', effort: 'high' } }],
-  permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
+  permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], promptSuggestions: ['Suggested prompts', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
   agentsCanMessage: ['Agents message', true], agentsAutonomous: ['Work together without asking', true], agentsCanSpawn: ['Agents start agents', true],
   leadUpkeep: ['Keep lead agents fresh', { on: false, compactAt: 70, windowCap: 200_000, replaceAfter: 3 }], agentsCanEditTeam: ['Agents edit the team', true],
   voiceLang: ['Language', 'en-US'], autoUpdate: ['Update automatically', true],
@@ -176,6 +176,8 @@ const PAGES = {
         h('div', { class: 'segmented' }, PERMISSIONS.map(([id, label]) => h('button', { class: s.permissionMode === id ? 'on' : '', onClick: () => set({ permissionMode: id }) }, label))), reset('permissionMode')),
       setting('Give new tasks their own git worktree', 'Agents running at the same time then never edit the same files. You merge their work from Review.',
         toggle(s.worktreeByDefault, on => set({ worktreeByDefault: on })), reset('worktreeByDefault')),
+      setting('Suggest the next prompt', 'After a turn, Claude Code may suggest what to ask next, in grey in its input box and in the chat composer. Tab takes it. Applies to agents started from now on.',
+        toggle(s.promptSuggestions !== false, on => set({ promptSuggestions: on })), reset('promptSuggestions')),
     ]),
     group('Awareness', [
       setting("Tell agents what's happening around them", 'Each agent starts with a short summary of the other agents and the board, and hears what changed before each turn, like a task moving or another agent editing the same file.',

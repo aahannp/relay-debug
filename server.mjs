@@ -134,6 +134,7 @@ function route(method, pattern, handler) {
 route('GET', '/api/info', () => ({
   url: S.serverUrl(), token: TOKEN, mcpUrl: `${S.serverUrl()}/mcp`,
   electron: Boolean(process.versions.electron), voice: Boolean(VOICE_HELPER), home: os.homedir(), version: U.current(), debug: DEBUG,
+  yourCompactWindow: S.yourAutoCompactWindow() ?? null, // your Claude Code's own auto-compact window, which Relay then uses
 }));
 
 // Projects
@@ -169,13 +170,16 @@ route('PATCH', '/api/settings', ({ req, body }) => {
     if (key === 'agentDefaults') {
       const ok = ['claude', 'lead'].every(k => T.MODELS.includes(value?.[k]?.model) && T.EFFORTS.includes(value?.[k]?.effort));
       if (!ok) throw fail(400, 'Each default needs a known model and effort');
+      // '' is Claude Code's own window; else Claude Code's autoCompactWindow range.
+      const window = w => w === '' || (Number.isInteger(w) && w >= 100_000 && w <= 1_000_000);
+      if (!['claude', 'lead'].every(k => window(value[k].compactWindow))) throw fail(400, "Each default compacts at Claude Code's own window or at 100,000 to 1,000,000 tokens");
     }
     if (key === 'permissionMode' && !PERMISSION_MODES.includes(value)) throw fail(400, 'Unknown permission mode');
     if (key === 'leadUpkeep') {
-      const { on, compactAt, replaceAfter, windowCap } = value ?? {};
+      const { on, compactAt, replaceAfter } = value ?? {};
       const within = (n, low, high) => Number.isInteger(n) && n >= low && n <= high;
-      if (typeof on !== 'boolean' || !within(compactAt, 50, 95) || !within(replaceAfter, 1, 10) || !within(windowCap, 50_000, 2_000_000)) {
-        throw fail(400, 'Lead upkeep is on or off, compacts at 50 to 95% of a 50,000 to 2,000,000-token window and replaces after 1 to 10 compactions');
+      if (typeof on !== 'boolean' || !within(compactAt, 50, 95) || !within(replaceAfter, 1, 10)) {
+        throw fail(400, "Lead upkeep is on or off, compacts at 50 to 95% of the lead's window and replaces after 1 to 10 compactions");
       }
     }
     if (key === 'openSpaces' && !(Array.isArray(value) && value.every(p => typeof p === 'string'))) throw fail(400, 'openSpaces is a list of project folder paths');
@@ -215,12 +219,14 @@ route('POST', '/api/sessions', async ({ req, body }) => {
 });
 route('DELETE', '/api/sessions/:id', ({ req, params }) => (S.stop(noShell(req, sameProject(req, params.id), 'stop')), {}));
 
-// Claude's SessionStart hook reports the conversation id a pane is on (it changes on /clear).
+// Claude's SessionStart hook reports the conversation id a pane is on (it changes on /clear). After a compaction
+// its answer, printed by the hook, tells the agent again who it is and what is around it.
 route('POST', '/api/claude-session', ({ req, body }) => {
   const s = caller(req);
   if (!s) throw fail(404, 'Unknown session');
   S.noteClaudeSession(s, body.session_id);
-  return {};
+  const text = body.source === 'compact' ? S.reorient(s) : '';
+  return text ? { raw: JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: text } }), type: 'application/json' } : {};
 });
 
 // Claude's status line reports its context window's size (see statusLine in lib/sessions.mjs), for lead upkeep,

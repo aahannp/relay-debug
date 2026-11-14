@@ -314,11 +314,12 @@ export function composer(p) {
     if (!listings.has(dir)) listings.set(dir, api('GET', `/api/fs/list?path=${encodeURIComponent(dir)}`).catch(() => []));
     return listings.get(dir);
   };
-  let own = null; // the project's and your .claude/commands, asked once
+  let own = null; // the project's and your .claude/commands: asked once, and the menu never waits for them
   async function itemsFor(t) {
     const q = t.query.toLowerCase();
     if (t.kind === '/') {
-      const all = [...BUILTINS, ...await (own ??= api('GET', `/api/commands?cwd=${encodeURIComponent(p.session.cwd)}`).catch(() => []))];
+      if (!own) { own = []; api('GET', `/api/commands?cwd=${encodeURIComponent(p.session.cwd)}`).then(l => own.push(...l), () => {}); }
+      const all = [...BUILTINS, ...own];
       return all.filter(([name]) => name.toLowerCase().includes(q)).sort(([a], [b]) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q))
         .map(([name, desc]) => ({ label: `/${name}`, desc, icon: 'terminal', text: `/${name} ` }));
     }

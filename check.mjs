@@ -283,8 +283,8 @@ try {
   assert.equal(tools.length, 21, `21 MCP tools, got ${tools.join(', ')}`);
   assert.ok(['list_spaces', 'ask_space', 'answer_space'].every(t => tools.includes(t)) && !tools.some(t => /depart/.test(t)), 'the folder tools are named for spaces');
   assert.ok(!tools.some(t => /publish/.test(t)), 'agents can save artifacts but have no tool to publish them');
-  assert.match((await rpc('tools/call', { name: 'list_tasks', arguments: {} })).result.content[0].text, /Add a greeting/, 'MCP list_tasks reads the board');
-  assert.match((await rpc('tools/call', { name: 'list_agents', arguments: {} }, { 'x-desk-session': shell.id })).result.content[0].text, new RegExp(shell.id), 'MCP list_agents sees the shell');
+  assert.match((await rpc('tools/call', { name: 'list_tasks', arguments: { status: 'all' } })).result.content[0].text, /Add a greeting/, 'MCP list_tasks reads the board');
+  assert.match((await rpc('tools/call', { name: 'list_agents', arguments: { shells: true } }, { 'x-desk-session': shell.id })).result.content[0].text, new RegExp(shell.id), 'MCP list_agents sees the shell when asked');
   assert.ok((await rpc('tools/call', { name: 'list_agents', arguments: {} })).result.isError, 'but not for a caller that is no session');
   const self = await rpc('tools/call', { name: 'get_project', arguments: {} }, { 'x-desk-session': shell.id });
   assert.match(self.result.content[0].text, new RegExp(shell.id), 'MCP tools know which session is asking');
@@ -996,12 +996,12 @@ Ready to submit your answers?
   const made = await replyOf('create_task', { title: 'Trim replies', description: 'long '.repeat(400) });
   const noted = await replyOf('comment_on_task', { id: made.id, text: 'note '.repeat(400) });
   const moved = await replyOf('update_task', { id: made.id, status: 'review' });
-  assert.deepEqual([made, noted, moved].map(Object.keys), Array(3).fill(['id', 'status', 'title', 'branch']), 'create, comment and update answer with id, status, title and branch');
+  assert.deepEqual([made, noted, moved].map(Object.keys), Array(3).fill(['id', 'status', 'title']), 'create, comment and update answer with id, status and title (an empty branch left out)');
   assert.equal(moved.status, 'review');
   const startedTask = await replyOf('start_task', { id: made.id, worktree: false });
-  assert.deepEqual(Object.keys(startedTask), ['id', 'status', 'title', 'branch', 'sessionId', 'model', 'effort'], 'start_task adds the session it started');
-  assert.equal(startedTask.model, 'sonnet', 'on the worker default');
-  await exited(startedTask.sessionId);
+  assert.deepEqual(Object.keys(startedTask), ['ok', 'agent', 'name', 'task', 'started'], 'start_task answers briefly with the agent it started');
+  assert.equal((await ok('GET', '/api/sessions')).find(x => x.id === startedTask.agent).model, 'sonnet', 'on the worker default');
+  await exited(startedTask.agent);
   await ok('DELETE', `/api/tasks/${made.id}`);
   const teamNow = JSON.parse((await viaTool('list_team', {})).content[0].text);
   assert.deepEqual(teamNow.map(x => [x.name, x.model]), [['Christie', 'sonnet'], ['Browner', 'opus'], ['Scout', 'haiku'], ['Archie', 'opus'], ['Vera', 'opus'], ['Sherlock', 'opus'], ['Tess', 'sonnet'], ['Rhea', 'sonnet']], 'agents see the whole team');
@@ -1016,8 +1016,8 @@ Ready to submit your answers?
   assert.match((await viaTool('update_specialist', { specialist: 'Rhea', role: 'Spy' })).content[0].text, /turned off/, 'and the tool says so');
   await ok('PATCH', '/api/settings', { agentsCanEditTeam: true });
   const started = JSON.parse((await viaTool('start_agent', { prompt: 'Review the README', specialist: 'Rhea', model: 'haiku' })).content[0].text);
-  assert.deepEqual([started.specialist.name, started.model], ['Rhea', 'haiku'], 'an agent can start a specialist on a chosen model');
-  await exited(started.id);
+  assert.deepEqual((s => [s.specialist.name, s.model])((await ok('GET', '/api/sessions')).find(x => x.id === started.agent)), ['Rhea', 'haiku'], 'an agent can start a specialist on a chosen model');
+  await exited(started.agent);
   // One that dies on start fails the start with its exit code and last screen lines, never "working"
   fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "error: An unknown error occurred (Unexpected)"\nexit 1\n', { mode: 0o755 });
   const died = await viaTool('start_agent', { prompt: 'Review the README', specialist: 'Rhea' });
@@ -1029,8 +1029,8 @@ Ready to submit your answers?
   assert.equal((await ok('GET', '/api/tasks')).find(t => t.id === doomed.id).status, 'todo', 'and its task goes back to To do, not to Review');
   await ok('DELETE', `/api/tasks/${doomed.id}`);
   fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "FAKE-CLAUDE $*"\n', { mode: 0o755 });
-  const listed = JSON.parse((await viaTool('list_agents', {})).content[0].text).find(x => x.id === started.id);
-  assert.deepEqual([listed.specialist, listed.model, listed.asked], ['Rhea, Code reviewer: finds bugs before you merge', 'haiku', 'Review the README'], 'agents see who the others are and what each was asked');
+  const listed = JSON.parse((await viaTool('list_agents', {})).content[0].text).find(x => x.id === started.agent);
+  assert.deepEqual([listed.specialist, listed.model, listed.asked], ['Rhea', 'haiku', 'Review the README'], 'agents see who the others are and what each was asked');
 
   await ok('PATCH', '/api/settings', { agentsCanSpawn: false });
   const refused = await viaTool('start_agent', { prompt: 'x', specialist: 'Scout' });
@@ -1734,10 +1734,10 @@ esac
     assert.equal(await told(), before, 'not again when the worker exits');
     const viaBoss = async role => (await rpc('tools/call', { name: 'start_agent', arguments: { prompt: 'Own a goal', role } }, asBoss)).result;
     const child = JSON.parse((await viaBoss('lead')).content[0].text);
-    assert.deepEqual([child.role, child.model, child.effort], ['lead', 'opus', 'high'], 'a lead starts a lead, on the lead defaults');
+    assert.deepEqual((s => [s.role, s.model, s.effort])(sessions.get(child.agent)), ['lead', 'opus', 'high'], 'a lead starts a lead, on the lead defaults');
     const plainOne = await viaTool('start_agent', { prompt: 'Own a goal', role: 'lead' });
     assert.ok(plainOne.isError && /Only a lead agent/.test(plainOne.content[0].text), 'a non-lead cannot');
-    for (const id of [boss.id, child.id]) await ok('DELETE', `/api/sessions/${id}`);
+    for (const id of [boss.id, child.agent]) await ok('DELETE', `/api/sessions/${id}`);
     db.tasks.splice(db.tasks.indexOf(db.tasks.find(t => t.id === job.id)), 1);
   }
 
@@ -1775,6 +1775,110 @@ esac
     assert.equal(db.tasks.find(t => t.id === job.id).sessionId, again.id, 'its task follows it');
     for (const id of [boss.id, kept.id, woke.to.id, again.id]) await ok('DELETE', `/api/sessions/${id}`);
     db.tasks.splice(db.tasks.indexOf(db.tasks.find(t => t.id === job.id)), 1);
+  }
+
+  // ---- context: T3
+  // Agent tools: whole reports, stable ids, lean results. A worker Relay closed answers to its name, its task id and
+  // its old id, keeps that id when a message reopens it, and nothing of another project is ever reached.
+  {
+    const proj = path.join(tmp, 'ctx-t3'), far = path.join(tmp, 'ctx-t3-far');
+    for (const dir of [proj, far]) fs.mkdirSync(dir);
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=check', '-c', 'user.email=check@example.com', ...args], { cwd: proj, stdio: 'pipe' });
+    git('init', '-q'); fs.writeFileSync(path.join(proj, 'a.txt'), 'one\n'); git('add', '.'); git('commit', '-qm', 'one');
+    // Exits a second after it is told to, like a slow real one, so an old pane's exit can land after its reopen
+    fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "FAKE-CLAUDE $*"\ntrap \'sleep 1; exit 0\' HUP TERM\nwhile :; do sleep 0.2; done\n', { mode: 0o755 });
+    const boss = await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: proj, role: 'lead', name: 'Boss four' });
+    const asBoss = { 'x-desk-session': boss.id, 'x-desk-via': 'mcp' };
+    const call = async (name, args) => (await rpc('tools/call', { name, arguments: args }, asBoss)).result;
+    const said = async (name, args) => (r => (assert.ok(!r.isError, `${name} ${JSON.stringify(args)}: ${r.content[0].text}`), r.content[0].text))(await call(name, args));
+    const job = (await request('POST', '/api/tasks', { headers: asBoss, body: { title: 'Stable ids', project: proj } })).body;
+    const w = (await request('POST', `/api/tasks/${job.id}/start`, { headers: asBoss, body: { worktree: false } })).body.session;
+    await screenOf(w.id, /FAKE-CLAUDE/, 'the worker started');
+    const transcript = path.join(claudeHome, 'projects', proj.replace(/[^a-zA-Z0-9]/g, '-'), `${sessions.get(w.id).claudeSessionId}.jsonl`);
+    fs.mkdirSync(path.dirname(transcript), { recursive: true });
+    const [older, final] = ['o'.repeat(5000), 'f'.repeat(5000)];
+    fs.writeFileSync(transcript, [line({ type: 'user', message: { content: 'Go' } }), line({ type: 'assistant', message: { content: [{ type: 'text', text: older }] } }),
+      line({ type: 'user', message: { content: 'And?' } }), line({ type: 'assistant', message: { content: [{ type: 'text', text: final }] } })].join('\n'));
+    const closes = async id => {
+      sessions.get(boss.id).attention = false; // the fake boss goes quiet and looks like it waits for the user, which holds reports
+      assert.equal((await request('POST', '/api/turn-ended', { token: sessions.get(id).agentToken, body: { hook_event_name: 'Stop', last_assistant_message: final } })).status, 200);
+      for (let i = 0; i < 60 && sessions.has(id); i++) await new Promise(r => setTimeout(r, 50));
+      assert.ok(!sessions.has(id), 'the worker closes after its turn');
+    };
+    await closes(w.id);
+
+    const messages = async args => JSON.parse(await said('read_agent_chat', args)).messages;
+    const cut = await messages({ agent: w.name });
+    assert.equal(cut.at(-1).text, final, 'the latest agent message comes back whole');
+    assert.equal(cut.find(m => m.text.startsWith('o')).text, `${'o'.repeat(2000)} …(cut)`, 'an older long one is cut, and says so');
+    assert.deepEqual((await messages({ agent: w.name, last: 3, full: true })).filter(m => m.from === 'agent').map(m => m.text), [older, final], 'full: true returns both whole');
+    const closedRow = JSON.parse(await said('list_agents', {})).find(x => x.id === w.id);
+    assert.deepEqual(closedRow && [closedRow.name, closedRow.status, closedRow.task, closedRow.chat], ['Stable ids', 'closed', job.id, w.chatId], 'list_agents shows the closed worker under its own name, id, chat and task');
+    for (const handle of [w.name, job.id, w.id]) {
+      assert.match(await said('read_agent_output', { agent: handle }), /f{5000}\n\n\(pane closed; read_agent_chat has the rest\)$/, `read_agent_output by ${handle} gives its last message`);
+      assert.equal(JSON.parse(await said('read_agent_chat', { agent: handle })).messages.at(-1).text, final, `read_agent_chat by ${handle}`);
+      await said('get_agent_diff', { agent: handle });
+    }
+    assert.match(await said('read_agent_output', { id: w.id }), /pane closed/, 'the old argument name id still works');
+
+    const reply = await said('message_agent', { agent: w.name, text: 'One more thing' });
+    assert.ok(reply.length <= 200, `a message_agent result is short: ${reply}`);
+    assert.deepEqual(JSON.parse(reply), { ok: true, agent: w.id, name: 'Stable ids', task: job.id, reopened: true }, 'message_agent by name reopens it, with its old id');
+    assert.equal(sessions.get(w.id)?.chatId, w.chatId, 'the same chat, under the same id');
+    await screenOf(w.id, /One more thing/, 'and it gets the message');
+
+    // The old pane's exit lands a second after the reopen under the same id: it must leave the new pane alone
+    await closes(w.id);
+    const old = sessions.get(w.id);
+    assert.equal(old, undefined);
+    const again = JSON.parse(await said('message_agent', { to: job.id, text: 'Last one' })); // the old argument name to
+    assert.deepEqual([again.agent, again.reopened], [w.id, true], 'message_agent by task id reopens it too, with the same id');
+    const fresh = sessions.get(w.id);
+    await new Promise(r => setTimeout(r, 1800));
+    assert.equal(sessions.get(w.id), fresh, 'after the old exit the new session is still in the map');
+    assert.ok(!fresh.exited, 'and still running');
+    assert.ok(['mcp', 'hooks'].every(d => fs.existsSync(path.join(tmp, 'data', d, `${w.id}.json`))), 'its hook and mcp files exist');
+    assert.equal(db.chats.find(c => c.id === w.chatId).sessionId, w.id, 'its chat still points at it');
+    assert.deepEqual((t => [t.sessionId, t.status])(db.tasks.find(t => t.id === job.id)), [w.id, 'doing'], 'and its task is intact');
+
+    // Errors say what to do next; an ambiguous name is never guessed; another project is never reached
+    const nobody = await call('read_agent_output', { agent: 'Nobody' });
+    assert.ok(nobody.isError && nobody.content[0].text.includes('No agent "Nobody" here. list_agents shows live agents and recent closed chats; a closed worker is reached by its name or task id.'), 'an unknown name gives the helpful error');
+    const twins = [];
+    for (let i = 0; i < 2; i++) twins.push(await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: proj, name: 'Twin', prompt: 'Look into '.repeat(40) }));
+    const both = await call('read_agent_output', { agent: 'Twin' });
+    assert.ok(both.isError && /2 agents are called "Twin"/.test(both.content[0].text) && twins.every(t => both.content[0].text.includes(t.id)), 'a name two agents share lists both, not a guess');
+    const faraway = await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: far, name: 'Faraway' });
+    const farJob = await ok('POST', '/api/tasks', { title: 'Far task', project: far });
+    for (const handle of [faraway.id, 'Faraway', farJob.id, faraway.chatId]) {
+      for (const [tool, args] of [['read_agent_output', {}], ['read_agent_chat', {}], ['get_agent_diff', {}], ['message_agent', { text: 'psst' }]]) {
+        assert.ok((await call(tool, { agent: handle, ...args })).isError, `${tool} can't reach another project's agent by ${handle === 'Faraway' ? 'name' : 'id'}`);
+      }
+    }
+    assert.doesNotMatch(await outputOf(faraway.id), /psst/, 'and it never got the message');
+
+    // Lean lists: 6 live agents and 30 closed chats still read in under 2,000 characters
+    const helpers = [];
+    for (const name of ['Helper', 'Second helper']) helpers.push(await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: proj, name, prompt: 'Write the tests for '.repeat(30) }));
+    const pastChats = Array.from({ length: 30 }, (_, i) => ({ ...chat(`t3-${i}`, randomUUID(), proj), project: proj, name: `Worker number ${i} with a long name`, autoClosed: `old${i}`, taskId: `task${i}`, lastActiveAt: Date.now() - i * 60_000 }));
+    db.chats.push(...pastChats);
+    const listing = await said('list_agents', {});
+    const rows = JSON.parse(listing);
+    assert.equal(rows.filter(x => x.status !== 'closed').length, 6, 'six live agents');
+    assert.equal(rows.filter(x => x.status === 'closed').length, 5, 'and the 5 newest closed chats');
+    assert.ok(listing.length <= 2000 && !listing.includes('null'), `the default list is lean (${listing.length} chars, no null)`);
+    assert.equal(JSON.parse(await said('list_agents', { closed: 50 })).filter(x => x.status === 'closed').length, 30, 'closed: N lists more');
+    assert.match(await said('read_agent_output', { agent: 'Worker number 7 with a long name' }), /pane closed/, 'a closed chat is reached by its worker name');
+    for (const c of pastChats) db.chats.splice(db.chats.indexOf(c), 1);
+    const board = JSON.parse(await said('list_tasks', {}));
+    assert.deepEqual(board.map(t => [t.id, t.agent]), [[job.id, w.id]], 'list_tasks names the agent on a task, in this project');
+    await ok('PATCH', `/api/tasks/${job.id}`, { status: 'done' });
+    assert.deepEqual(JSON.parse(await said('list_tasks', {})), [], 'and hides done tasks');
+    assert.equal(JSON.parse(await said('list_tasks', { status: 'all' })).length, 1, 'unless asked for all');
+
+    for (const s of [boss, ...twins, faraway, ...helpers, { id: w.id }]) await ok('DELETE', `/api/sessions/${s.id}`);
+    for (const t of [job, farJob]) db.tasks.splice(db.tasks.indexOf(db.tasks.find(x => x.id === t.id)), 1);
+    fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "FAKE-CLAUDE $*"\nexec cat\n', { mode: 0o755 }); // back as it was
   }
 
   const asker = await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: repo, name: 'Asker' });
@@ -1867,10 +1971,10 @@ esac
   assert.deepEqual(JSON.parse((await fromChristie('read_agent_chat', { agent: 'Adam' })).content[0].text).messages,
     [{ from: 'user', text: 'Fix the login bug' }, { from: 'agent', text: 'Looking at auth.js\n(used Read)' }], "an agent can read another's conversation");
   const copy = JSON.parse((await fromChristie('clone_agent', { agent: 'Adam', prompt: 'You take the tests' })).content[0].text);
-  assert.deepEqual([copy.name, copy.startedBy?.name, copy.cwd], ['Adam 2', 'Christie', asker.cwd], 'a copy of Adam, started by Christie, in the same folder');
-  await screenOf(copy.id, new RegExp(`--resume ${askerChat} --fork-session`), 'carrying his conversation');
+  assert.deepEqual((s => [copy.name, s.startedBy?.name, s.cwd])(sessions.get(copy.agent)), ['Adam 2', 'Christie', asker.cwd], 'a copy of Adam, started by Christie, in the same folder');
+  await screenOf(copy.agent, new RegExp(`--resume ${askerChat} --fork-session`), 'carrying his conversation');
   assert.match((await fromChristie('clone_agent', { prompt: 'x' })).content[0].text, /no conversation to copy yet/, 'an agent with nothing said yet has nothing to copy');
-  await ok('DELETE', `/api/sessions/${copy.id}`);
+  await ok('DELETE', `/api/sessions/${copy.agent}`);
   fs.appendFileSync(path.join(askerDir, `${askerChat}.jsonl`), `\n${line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Read a lot' }], usage: { input_tokens: 10, cache_read_input_tokens: 160_000 } } })}\n`);
   const tooBig = await fromChristie('clone_agent', { agent: 'Adam', prompt: 'You take the tests' });
   assert.ok(tooBig.isError && /160K tokens, too big to copy.*start_agent/.test(tooBig.content[0].text), 'a conversation past 150K is not copied; start_agent with a brief is suggested');
@@ -1907,7 +2011,7 @@ esac
     ['stop', await request('DELETE', `/api/sessions/${asker.id}`, { headers: noOne })], ['diff', await diffOf(asker.cwd, noOne)]]) {
     assert.equal(r.status, 403, `a tool call that names no agent can't ${what} any`);
   }
-  const listedNow = JSON.parse((await fromChristie('list_agents', {})).content[0].text).map(x => x.id);
+  const listedNow = JSON.parse((await fromChristie('list_agents', { shells: true })).content[0].text).map(x => x.id);
   assert.ok(listedNow.includes(asker.id) && listedNow.includes(shell.id) && !listedNow.includes(outsider.id), 'list_agents shows this project only');
   // A closed pane's conversation stays readable: list_agents shows it, read_agent_chat shows the command and the PR link
   const pastId = randomUUID();

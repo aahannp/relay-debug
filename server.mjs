@@ -289,7 +289,8 @@ const findChat = id => db.chats.find(c => c.id === id) ?? (() => { throw fail(40
 route('GET', '/api/chats', ({ req, query }) => {
   const project = fromAgent(req) ? (caller(req) ?? (() => { throw fail(403, 'Only agents inside Relay can reach other agents'); })()).project
     : query.get('project') ? expand(query.get('project')) : null; // an agent sees only its own project's chats
-  return db.chats.filter(c => !project || c.project === project).map(S.chatInfo).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+  return db.chats.filter(c => !project || c.project === project).map(c => fromAgent(req) ? { ...S.chatInfo(c), name: c.name } : S.chatInfo(c)) // agents reach a closed worker by its own name
+    .sort((a, b) => b.lastActiveAt - a.lastActiveAt);
 });
 async function reopen(chat, prompt = '') {
   const s = await S.createSession({ chatId: chat.id, prompt });
@@ -350,9 +351,9 @@ route('GET', '/api/chats/:id/chat', ({ req, params, query }) => { // a closed pa
   const from = caller(req);
   if (fromAgent(req) && !from) throw fail(403, 'Only agents inside Relay can reach other agents');
   if (from && chat.project !== from.project) throw fail(403, 'Agents can only reach agents in their own project');
-  return S.chatConversation(chat, Math.min(Number(query.get('last')) || 30, 200));
+  return S.chatConversation(chat, Math.min(Number(query.get('last')) || 30, 200), { full: query.get('full') === '1' });
 });
-route('GET', '/api/sessions/:id/chat', ({ req, params, query }) => S.conversation(sameProject(req, params.id), Math.min(Number(query.get('last')) || 30, 200)));
+route('GET', '/api/sessions/:id/chat', ({ req, params, query }) => S.conversation(sameProject(req, params.id), Math.min(Number(query.get('last')) || 30, 200), { full: query.get('full') === '1' }));
 route('GET', '/api/sessions/:id/transcript', ({ req, params, query }) => { // a Claude pane's chat view, read on from ?after=
   const s = sameProject(req, params.id);
   if (s.kind !== 'agent' || s.agent !== 'claude') throw fail(400, 'Only Claude panes have a chat view');
@@ -770,7 +771,7 @@ const existingDir = p => {
 route('GET', '/api/review/file', ({ query }) => G.fileVersions(existingDir(query.get('worktree')), query.get('file')));
 route('GET', '/api/review/diff', async ({ req, query }) => {
   const dir = existingDir(query.get('worktree'));
-  if (fromAgent(req) && !visibleSessions(req).some(s => s.cwd === dir)) throw fail(403, 'Agents can only see the changes of agents in their own project');
+  if (fromAgent(req) && !visibleSessions(req).some(s => s.cwd === dir) && !db.chats.some(c => c.project === caller(req)?.project && c.cwd === dir)) throw fail(403, 'Agents can only see the changes of agents in their own project');
   return { text: await G.diffText(dir) };
 });
 route('POST', '/api/review/commit', ({ body }) => G.commit(existingDir(body.worktree), String(body.message || 'Relay changes')));

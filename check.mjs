@@ -769,6 +769,13 @@ Ready to submit your answers?
   assert.equal(promptSuggestion(await box('Name one')), null, 'typed text is no suggestion');
   assert.equal(promptSuggestion(await box('\x1b[2mName one \x1b[0manimal')), null, 'nor is dim text with typed text in the box');
   assert.equal(promptSuggestion(await box('')), null, 'an empty box suggests nothing');
+  // claude 2.1.325 draws its caret on the first letter: inverse (bytes captured from the real CLI) or plain.
+  assert.equal(promptSuggestion(await box('\x1b[7mN\x1b[27m\x1b[2mame one animal')), 'Name one animal', 'a suggestion under an inverse caret is read');
+  assert.equal(promptSuggestion(await box('N\x1b[2mame one animal')), 'Name one animal', 'and under a plain caret');
+  assert.equal(promptSuggestion(await box('N')), null, 'a single typed letter is no suggestion');
+  assert.equal(promptSuggestion(await box('\x1b[7mT\x1b[27m\x1b[2mry "refactor <filepath>"')), null, 'the real startup placeholder is no suggestion');
+  for (const h of ['Message @worker…', 'Taking your message back…', 'Press up to edit queued messages', 'Press Enter to send them now'])
+    assert.equal(promptSuggestion(await box(`\x1b[2m${h}`)), null, `"${h}" is no suggestion`);
   assert.equal(promptSuggestion(await box('\x1b[2mName one animal', '✶ Tempering… (3s)')), null, 'nothing while the spinner runs');
   assert.equal(promptSuggestion(prompt), null, 'nothing while a menu is up');
   const busy = await box('\x1b[2mName one animal');

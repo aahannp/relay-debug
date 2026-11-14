@@ -66,6 +66,7 @@ assert.equal(migrated({ fancyCursor: true }).fancyCursor, true, 'turned on after
   }
 }
 assert.equal(db.settings.fancyCursor, false, 'the custom cursor is off by default');
+assert.equal(db.settings.threadView, 'chat', 'threads show as chat by default');
 assert.ok(desk.token.length >= 32, 'an empty token file is replaced with a real secret');
 assert.ok(!fs.existsSync(path.join(tmp, 'data', 'mcp', 'gone1234.json')), "a session's MCP file never outlives a restart");
 let SELF = `http://127.0.0.1:${desk.port}`;
@@ -940,6 +941,9 @@ Ready to submit your answers?
   assert.match(draftSrc, /newSession\(\{ project: d\.project, prompt, model: d\.model, effort: d\.effort, \.\.\.who \}\)/, 'and it sends the model and effort picked');
   assert.equal((await request('PATCH', '/api/settings', { body: { agentDefaults: { claude: { model: 'gpt', effort: '' }, lead: { model: '', effort: '' } } } })).status, 400, 'defaults must be known models');
   assert.equal((await request('PATCH', '/api/settings', { body: { scrollSpeed: 10 } })).status, 400, 'scroll speed has a sensible range');
+  assert.equal((await request('PATCH', '/api/settings', { body: { threadView: 'grid' } })).status, 400, 'threads show as chat or terminal, nothing else');
+  assert.equal((await request('PATCH', '/api/settings', { body: { threadView: 'terminal' } })).body.threadView, 'terminal');
+  await request('PATCH', '/api/settings', { body: { threadView: 'chat' } });
   {
     const { lastProject } = await ok('GET', '/api/settings');
     const extra = fs.mkdtempSync(path.join(tmp, 'space-'));
@@ -2106,7 +2110,10 @@ esac
       'the thread a start tool made, from its result');
     assert.deepEqual([W.summarize([tool('Read', 'Read a'), tool('Read', 'Read b')]).kind, W.summarize([{ kind: 'thinking' }]).kind], ['read', 'reasoning'], "the group's icon follows its kind");
     assert.deepEqual([12000, 65000, 3725000, 3605000, 120000].map(W.elapsed), ['12s', '1m 5s', '1h 2m 5s', '1h 0m 5s', '2m 0s']);
-    const { triggerAt } = await import('./public/js/composer.js');
+    const { triggerAt, drawsScreen } = await import('./public/js/composer.js');
+    assert.deepEqual(['/help', '/model', '/model ', '/config', '/mcp', '/resume', '/context'].filter(t => !drawsScreen(t)), [], 'built-ins that draw their own screen go to the terminal');
+    assert.deepEqual(['/model opus', '/effort high', '/resume abc', '/ponytail', '/m-skills:pr', '/plugin:foo', '/helpful', '/init', '/review', '/statusline', '/compact', '/clear', '/rename x', 'hello /help', '/'].filter(drawsScreen), [],
+      'skills, plugin commands, prompt built-ins and a built-in given its value stay in the chat');
     assert.deepEqual([triggerAt('/com', 4), triggerAt('hi /x', 5), triggerAt('see @src/a', 10)],
       [{ kind: '/', query: 'com', start: 0, end: 4 }, null, { kind: '@', query: 'src/a', start: 4, end: 10 }], '`/` opens the menu only at the start of the box, `@` anywhere');
     assert.ok(!fs.readFileSync(new URL('./public/chat.css', import.meta.url), 'utf8').includes('accent'), 'the chat view never uses the pink --accent');

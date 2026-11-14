@@ -16,7 +16,7 @@ const LANGUAGES = [['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['en-IN
   ['es-ES', 'Spanish'], ['fr-FR', 'French'], ['de-DE', 'German'], ['pt-BR', 'Portuguese (Brazil)'], ['ja-JP', 'Japanese']];
 // The defaults (as in lib/store.mjs) of what this page sets, for T3's per-row "Reset to default" and "Restore defaults".
 const DEFAULTS = {
-  sidebarHidden: ['Sidebar', false], fancyCursor: ['Animated cursor', false], scrollSpeed: ['Scroll speed', 1],
+  sidebarHidden: ['Sidebar', false], threadView: ['Show threads as', 'chat'], fancyCursor: ['Animated cursor', false], scrollSpeed: ['Scroll speed', 1],
   theme: ['Theme', 't3dark'], fontSize: ['Text size', 13],
   defaultAgent: ['Default agent', 'claude'], agentDefaults: ['Model and effort', { claude: { model: 'sonnet', effort: '' }, lead: { model: 'opus', effort: 'high' } }],
   permissionMode: ['Permissions', 'default'], worktreeByDefault: ['Own git worktree', true], agentsAware: ['Awareness', true], spacesCanAsk: ['Projects ask each other', true],
@@ -125,6 +125,9 @@ const PAGES = {
     group('General', [
       setting('Sidebar', 'Hide it to give the panes the whole window. ⌘B or the button at the top left also do it.',
         toggle(s.sidebarHidden !== true, on => set({ sidebarHidden: !on })), reset('sidebarHidden')),
+      setting('Show threads as', 'Every Claude thread, open now or later. A thread\'s own Chat or Terminal switch still changes just that one, until you change this.',
+        h('div', { class: 'segmented', role: 'group', 'aria-label': 'Show threads as' }, [['chat', 'Chat'], ['terminal', 'Terminal']].map(([id, label]) =>
+          h('button', { class: s.threadView === id ? 'on' : '', 'aria-pressed': String(s.threadView === id), onClick: () => set({ threadView: id }) }, label))), reset('threadView')),
       setting('Animated cursor', 'A custom cursor that reacts to what you point at. It steps aside over terminals and text.',
         toggle(s.fancyCursor === true, on => set({ fancyCursor: on })), reset('fancyCursor')),
       setting('Scroll speed', `${s.scrollSpeed ?? 1}× how far your trackpad or wheel moves. 1× matches Terminal and iTerm.`,

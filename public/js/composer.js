@@ -14,6 +14,19 @@ const APPROVAL = { Bash: 'Command approval', Edit: 'File change approval', Multi
   NotebookEdit: 'File change approval', Read: 'File read approval' };
 const squash = text => String(text ?? '').replace(/\s+/g, ' ').trim();
 
+// Claude Code's built-ins whose answer is only on its own screen: a dialog or picker (Ink, in claude 2.1.325), or text
+// the chat hides (/context, /cost, /usage). Skills, plugin commands (/m-skills:pr) and prompt built-ins (/init,
+// /review, /statusline) answer in the chat; /compact, /clear, /rename and the like just do it.
+const SCREENS = new Set(['add-dir', 'agents', 'bashes', 'bug', 'config', 'context', 'cost', 'doctor', 'export', 'feedback', 'help', 'hooks',
+  'ide', 'login', 'logout', 'mcp', 'memory', 'permissions', 'plugin', 'privacy-settings', 'release-notes', 'rewind', 'skills', 'status',
+  'tasks', 'terminal-setup', 'theme', 'upgrade', 'usage']);
+// These open a picker only when typed alone: /model opus just switches.
+const PICKERS = new Set(['effort', 'model', 'output-style', 'resume']);
+export function drawsScreen(text) {
+  const [, name, arg] = text.match(/^\/([\w-]+)(?:\s+([\s\S]*))?$/) ?? [];
+  return SCREENS.has(name) || (PICKERS.has(name) && !arg?.trim());
+}
+
 // What the docked panel shows for the menu on Claude's screen (menuOf in lib/sessions.mjs: { lines, multi,
 // options: [{ n, label, current, typed }] }, or null) and the tool waiting for its result ({ id, name, detail, ask },
 // or null). The pending tool is the one asking: Claude Code writes its tool_use line before it runs it.
@@ -420,13 +433,13 @@ export function composer(p) {
     return true;
   }
 
-  // A slash command other than /compact or /clear draws its own screen, which only the terminal shows.
+  // A built-in that draws its own screen shows it in the terminal, for this once: the thread still opens in chat.
   function submit() {
     const text = input.value.replace(CONTROL, '').trim();
     if (!type(text)) return;
     input.value = '';
     buttons();
     el.dispatchEvent(new Event('sent'));
-    if (/^\/(?!(compact|clear)\b)\S/.test(text)) p.showChat(false);
+    if (drawsScreen(text)) p.showChat(false);
   }
 }

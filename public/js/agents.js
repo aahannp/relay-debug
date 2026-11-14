@@ -22,11 +22,13 @@ const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(v
 const hidden = new Set();
 const hiddenKeys = new Set(stored(HIDDEN, '[]'));
 let maxKey = stored(MAX, 'null'); // the pane that was maximised, until it shows up again
-// Claude panes you switched to Terminal, by chat id like the hidden ones. Chat is the default, so the old
-// 'agent-desk:chat-view' list (the panes switched to Chat, back when Terminal was the default) means nothing now.
-const TERMINAL = 'agent-desk:terminal-view';
-const terminalKeys = new Set(stored(TERMINAL, '[]'));
-try { localStorage.removeItem('agent-desk:chat-view'); } catch {}
+// Claude panes you switched away from Settings' "Show threads as" (Chat or Terminal), by chat id like the hidden ones.
+// Changing the setting clears it. The older lists go once: 'agent-desk:chat-view' (from when Terminal was the default)
+// and 'agent-desk:terminal-view', which also saved the composer's automatic switches, so threads that flipped on their own open in chat again.
+const FLIPPED = 'agent-desk:view-flipped';
+const flipped = new Set(stored(FLIPPED, '[]'));
+try { localStorage.removeItem('agent-desk:chat-view'); localStorage.removeItem('agent-desk:terminal-view'); } catch {}
+const chatByDefault = () => state.settings.threadView !== 'terminal';
 const keyOf = id => (s => s?.chatId ?? s?.shellId ?? id)(panes.get(id)?.session);
 
 export function mount(root) {
@@ -57,6 +59,7 @@ export function mount(root) {
   on('chats', () => { for (const p of panes.values()) if (p.kind === 'term') renderHead(p); });
   on('project', sync);
   on('settings', sync); // also picks up spaces opened or closed beside this one
+  on('settings', applyThreadView);
   on('theme', retheme);
   on('layout', switchLayout);
   on('chats', refreshHeader);
@@ -196,6 +199,18 @@ command('New shell', () => newSession({ kind: 'shell' }), { icon: 'terminal' });
 command('New browser pane', () => newBrowser(), { icon: 'globe' });
 command('Hide this pane', () => (focusedId ? hidePane(focusedId) : toast('Click into a pane first', 'error')), { icon: 'eyeOff' });
 command('Show hidden panes', () => showHidden(), { icon: 'eye' });
+command('Show all threads as chat', () => actions.setSetting({ threadView: 'chat' }), { icon: 'message' });
+command('Show all threads as terminal', () => actions.setSetting({ threadView: 'terminal' }), { icon: 'terminal' });
+
+// Settings' "Show threads as" changed (or arrived): every open Claude pane follows it, and per-thread switches start over.
+let threadView;
+function applyThreadView() {
+  const now = state.settings.threadView;
+  if (!now || now === threadView) return;
+  if (threadView && flipped.size) { flipped.clear(); store(FLIPPED, []); }
+  threadView = now;
+  for (const p of panes.values()) if (p.showChat && !p.docked) p.showChat(chatByDefault() !== flipped.has(keyOf(p.id)), false);
+}
 
 // ---------- Keeping panes in step with the server ----------
 // The grid shows the panes of each open space: the current one, and any you showed beside it from the sidebar.
@@ -515,7 +530,7 @@ function terminalPane(s, parent) {
   const exitBar = h('div', { class: 'exit-bar' });
   const id = s.id;
   // A labelled two-segment switch rather than an icon, so a pane says which view you're in.
-  const seg = (label, chat) => h('button', { type: 'button', class: 'seg', onClick: () => p.showChat(chat) }, label);
+  const seg = (label, chat) => h('button', { type: 'button', class: 'seg', onClick: () => p.showChat(chat, true, true) }, label);
   const chatSeg = seg('Chat', true), termSeg = seg('Terminal', false);
   const viewSwitch = s.kind === 'agent' && s.agent === 'claude' && h('div', { class: 'view-switch', role: 'group', 'aria-label': 'View' }, chatSeg, termSeg);
   const blocksBtn = s.kind === 'shell' && h('button', { class: 'icon-btn', title: 'Command blocks', onClick: () => blocksBtn.classList.toggle('on', el.classList.toggle('show-blocks')) }, icon('list', 15));
@@ -562,12 +577,15 @@ function terminalPane(s, parent) {
     p.chat.el.addEventListener('focusin', () => setFocus(id));
     el.querySelector('.pane-body').append(p.chat.el);
     // The terminal stays mounted under the chat: hidden, fit() leaves the PTY its size, so Claude's screen is untouched.
-    p.showChat = (on, focus = true) => {
+    // Only a switch you make (remember) is kept for the thread; the composer's trip to a built-in's screen isn't.
+    p.showChat = (on, focus = true, remember = false) => {
       el.classList.toggle('chat-mode', on);
       chatSeg.setAttribute('aria-pressed', on);
       termSeg.setAttribute('aria-pressed', !on);
-      terminalKeys[on ? 'delete' : 'add'](keyOf(id));
-      store(TERMINAL, [...terminalKeys]);
+      if (remember) {
+        flipped[on === chatByDefault() ? 'delete' : 'add'](keyOf(id));
+        store(FLIPPED, [...flipped]);
+      }
       if (on) p.chat.show();
       else { p.chat.hide(); p.fit(); }
       if (focus) focusPane(p);
@@ -576,7 +594,7 @@ function terminalPane(s, parent) {
   connect(p);
   panes.set(id, p);
   // A docked "Edit with AI" pane has no header, so no switch: it stays on the terminal.
-  p.showChat?.(!parent && !terminalKeys.has(keyOf(id)), false);
+  p.showChat?.(!parent && chatByDefault() !== flipped.has(keyOf(id)), false);
   layout();
   return p;
 }
@@ -709,7 +727,7 @@ const closePane = guard(async id => {
   if (!p.session.exited && !(await confirmDialog(`Stop "${chatTitle(p.session)}"?`, `This ends the process running in this pane.${keeps}`, { label: 'Stop', danger: true }))) return;
   await api('DELETE', `/api/sessions/${id}`);
   if (hiddenKeys.delete(keyOf(id))) store(HIDDEN, [...hiddenKeys]);
-  if (terminalKeys.delete(keyOf(id))) store(TERMINAL, [...terminalKeys]);
+  if (flipped.delete(keyOf(id))) store(FLIPPED, [...flipped]);
   dispose(id);
   actions.refresh('sessions');
 });
@@ -1018,7 +1036,7 @@ function threadMenu(anchor, p) {
   const chat = p.el.classList.contains('chat-mode');
   menu(anchor, [
     p.session?.chatId && { label: 'Rename', icon: 'pen', onClick: () => renameInline(anchor, p.session) },
-    p.showChat && { label: chat ? 'Show terminal' : 'Show chat', icon: chat ? 'terminal' : 'message', onClick: () => p.showChat(!chat) },
+    p.showChat && { label: chat ? 'Show terminal' : 'Show chat', icon: chat ? 'terminal' : 'message', onClick: () => p.showChat(!chat, true, true) },
     { label: 'Show all threads in a grid', icon: 'layoutGrid', onClick: () => actions.setLayout('grid') },
     { label: 'Hide', icon: 'eyeOff', onClick: () => hidePane(p.id) },
     'sep',

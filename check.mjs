@@ -1633,6 +1633,7 @@ esac
     for (let i = 0; long.length < 1490; i++) long += ` w${i}`;
     long += ' END-OF-NOTE';
     assert.ok(long.length >= 1500);
+    await news(worker.id); // its turn starts
     await comment(job, worker, long);
     await ok('PATCH', `/api/tasks/${job.id}`, { status: 'review' });
     assert.equal((await request('POST', '/api/turn-ended', { token: sessions.get(worker.id).agentToken, body: { hook_event_name: 'Stop', last_assistant_message: '' } })).status, 200);
@@ -1640,7 +1641,8 @@ esac
     await wait(400);
     assert.equal(count(typed, `Task Whole report (task id ${job.id}) is ready for review. get_agent_diff`), 1, 'the move to review is announced, with no excerpt');
     assert.deepEqual([count(typed, 'START-OF-NOTE'), count(typed, 'END-OF-NOTE'), count(typed, long)], [1, 1, 1], 'and the note arrives whole, once');
-    sessions.get(lead.id).attention = false; // the fake terminal rang its bell at that 1,024-byte line, which reads as needing you
+    // The fake terminal rings its bell at that 1,024-byte line, which reads as needing you, and would hold back what follows
+    Object.defineProperty(sessions.get(lead.id), 'attention', { get: () => false, set() {} });
 
     // C7: a worker that stops without a note leaves its task in doing, and its starter hears so; with a note it goes to review
     const quiet = await newTask('No note');
@@ -1654,6 +1656,62 @@ esac
     await ok('DELETE', `/api/sessions/${notedWorker.id}`);
     await until(() => taskNow(noted).status === 'review', 'a worker that left a note goes to review when it stops');
     assert.match(await news(lead.id), new RegExp(`^- doing, no worker running: No note \\(task id ${quiet.id}\\)$`, 'm'), "the starter's brief marks the task nobody is on");
+    const turnEnd = (w, said) => request('POST', '/api/turn-ended', { token: sessions.get(w.id).agentToken, body: { hook_event_name: 'Stop', last_assistant_message: said } });
+    const stoppedEarly = t => count(typed, `Task ${t.title} (task id ${t.id}) stopped before reporting`);
+
+    // Only the worker's own note since the task last went to doing counts: a restarted task's worker has the same name
+    const again = await newTask('Restarted');
+    const w1 = await startTask(again);
+    await comment(again, w1, 'Done: first try');
+    await ok('DELETE', `/api/sessions/${w1.id}`);
+    await until(() => taskNow(again).status === 'review', 'the first worker reported');
+    await wait(5);
+    const w2 = await startTask(again);
+    assert.equal(w2.name, w1.name, 'the same name');
+    await ok('DELETE', `/api/sessions/${w2.id}`);
+    await until(() => stoppedEarly(again) === 1, "the second worker's starter hears it stopped before reporting");
+    assert.equal(taskNow(again).status, 'doing', 'and the old note does not move the task');
+    const back = await newTask('Sent back');
+    const bw = await startTask(back);
+    await comment(back, bw, 'Done: v1');
+    await ok('PATCH', `/api/tasks/${back.id}`, { status: 'review' });
+    await wait(5);
+    await ok('PATCH', `/api/tasks/${back.id}`, { status: 'doing' }); // sent back to fix something
+    await ok('DELETE', `/api/sessions/${bw.id}`);
+    await until(() => stoppedEarly(back) === 1, 'a worker sent back that stops without a new note did not report');
+    assert.equal(taskNow(back).status, 'doing');
+
+    // A blocked note is not a report
+    const stuck = await newTask('Stuck');
+    const sw = await startTask(stuck);
+    await comment(stuck, sw, 'Progress: half done');
+    await comment(stuck, sw, 'Blocked: need the API key');
+    await ok('DELETE', `/api/sessions/${sw.id}`);
+    await until(() => stoppedEarly(stuck) === 1, 'a worker whose latest note is blocked did not report');
+    assert.equal(taskNow(stuck).status, 'doing');
+
+    // A turn with no text sends only a note from that turn, not the last turn's again
+    const twice = await newTask('Two turns');
+    const tw = await startTask(twice);
+    db.chats.find(c => c.id === sessions.get(tw.id).chatId).talked = true; // so it stays open for a second turn
+    await news(tw.id);
+    await comment(twice, tw, 'FIRST-TURN-NOTE');
+    await turnEnd(tw, '');
+    await until(() => typed.includes('FIRST-TURN-NOTE'), 'the first turn sends its note');
+    await news(tw.id);
+    await turnEnd(tw, '');
+    await wait(400);
+    assert.equal(count(typed, 'FIRST-TURN-NOTE'), 1, 'the second turn does not send it again');
+    await ok('DELETE', `/api/sessions/${tw.id}`);
+
+    // A worker whose turn ends with words and no note: its starter gets them once, and no "stopped before reporting" after the close
+    const asks = await newTask('Asks first');
+    const aw = await startTask(asks);
+    await news(aw.id);
+    await turnEnd(aw, 'QUESTION-FOR-LEAD which file');
+    await until(() => !sessions.get(aw.id), 'it closes after its turn');
+    await wait(400);
+    assert.deepEqual([count(typed, 'QUESTION-FOR-LEAD'), stoppedEarly(asks), taskNow(asks).status], [1, 0, 'doing'], 'one report, no stop message, still doing');
 
     // C8: two agents of the same kind get the same system prompt, but for who they are
     const [alpha, bravo] = [await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: proj, name: 'T2 alpha' }), await ok('POST', '/api/sessions', { kind: 'agent', agent: 'claude', project: proj, name: 'T2 bravo' })];

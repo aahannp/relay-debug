@@ -698,6 +698,7 @@ route('PATCH', '/api/tasks/:id', ({ req, params, body }) => {
   if (body.status !== undefined && !STATUSES.includes(body.status)) throw fail(400, `Status must be one of: ${STATUSES.join(', ')}`);
   const toReview = body.status === 'review' && task.status !== 'review';
   if (body.status !== undefined && body.status !== task.status) moved(req, task, body.status);
+  if (body.status === 'doing' && task.status !== 'doing') task.doingSince = Date.now(); // older notes aren't a report (see onExit)
   for (const key of ['title', 'description', 'status', 'agent', 'worktree']) if (body[key] !== undefined) task[key] = body[key];
   if (body.before !== undefined) { // drag-and-drop: place this task just before another one
     db.tasks.splice(db.tasks.indexOf(task), 1);
@@ -717,13 +718,13 @@ route('DELETE', '/api/tasks/:id', ({ params }) => {
 route('POST', '/api/tasks/:id/comments', ({ req, params, body }) => {
   const task = findTask(params.id);
   if (!String(body.text || '').trim()) throw fail(400, 'Comment is empty');
-  task.notes.push({ at: Date.now(), by: caller(req)?.name || 'You', text: body.text.trim() });
+  task.notes.push({ at: Date.now(), by: caller(req)?.name || 'You', sid: caller(req)?.id ?? null, text: body.text.trim() });
   for (const pr of new Set(body.text.match(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/g))) {
     S.note(task.project, caller(req)?.id ?? null, 'PR links posted', `${S.plain(caller(req)?.name || 'You')} posted ${pr} on ${S.plain(task.title, 60)}`);
   }
   task.updatedAt = Date.now();
   changed('tasks');
-  if (task.status === 'doing' && caller(req)?.id === task.sessionId && /blocked/i.test(body.text)) S.tellStarter(task, 'is blocked');
+  if (task.status === 'doing' && caller(req)?.id === task.sessionId && S.isBlocked(body.text)) S.tellStarter(task, 'is blocked');
   return task;
 });
 route('POST', '/api/tasks/:id/start', async ({ req, params, body }) => {
@@ -737,7 +738,7 @@ route('POST', '/api/tasks/:id/start', async ({ req, params, body }) => {
   const was = task.status;
   const s = await S.createSession({ project: task.project, agent, prompt, name: task.title, taskId: task.id, worktree, specialist: body.specialist || null, model: body.model || '', effort: body.effort || '', startedBy: starter(req) });
   if (task.status !== 'doing') S.note(task.project, s.id, 'tasks moved to doing', `Task ${S.plain(task.title, 60)} moved to doing`); // by its own agent, which knows
-  Object.assign(task, { status: 'doing', sessionId: s.id, agent, worktree, branch: s.worktree?.branch ?? null, worktreePath: s.worktree?.path ?? null, updatedAt: Date.now() });
+  Object.assign(task, { status: 'doing', doingSince: Date.now(), sessionId: s.id, agent, worktree, branch: s.worktree?.branch ?? null, worktreePath: s.worktree?.path ?? null, updatedAt: Date.now() });
   changed('tasks');
   if (fromAgent(req)) {
     await S.launched(s).catch(e => {

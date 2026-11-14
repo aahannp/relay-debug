@@ -2533,6 +2533,7 @@ esac
     assert.match(fs.readFileSync(new URL('./public/thread.css', import.meta.url), 'utf8'), /\.thread-draft \.chat-card \{ pointer-events: auto;/, 'the new-thread box takes mouse clicks');
     // The `/` menu's own commands: a missing folder is none (no 404), and yours come from CLAUDE_CONFIG_DIR
     const cmds = path.join(process.env.CLAUDE_CONFIG_DIR, 'commands');
+    assert.ok(!fs.readFileSync(new URL('./public/js/composer.js', import.meta.url), 'utf8').includes('await (own'), 'the / menu never waits for your own commands');
     assert.deepEqual(await ok('GET', `/api/commands?cwd=${encodeURIComponent(path.join(tmp, 'nowhere'))}`), [], 'no commands folders: an empty list');
     fs.mkdirSync(cmds, { recursive: true });
     fs.writeFileSync(path.join(cmds, 'ship.md'), 'Ship it');

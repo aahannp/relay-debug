@@ -790,6 +790,8 @@ Ready to submit your answers?
   const close = (a, b, what) => assert.ok(Math.abs(a - b) < 1e-9, `${what}: ${a} vs ${b}`);
   close(priceReply('claude-haiku-5-5', { cache_read_input_tokens: 1000, output_tokens: 100 }).cost, 0.00006, 'haiku up to 100K');
   close(priceReply('claude-haiku-5-5', { cache_read_input_tokens: 200_000, output_tokens: 100 }).cost, 0.01025, 'haiku above 100K');
+  close(priceReply('claude-fable-5-2', { input_tokens: 1000, cache_read_input_tokens: 1000, output_tokens: 1000 }).cost, 0.0482, 'fable 5.2: $8 in, $0.20 cache reads, $40 out');
+  close(priceReply('claude-fable-5-2', { cache_creation_input_tokens: 3000, cache_creation: { ephemeral_1h_input_tokens: 1000 } }).cost, 0.036, 'and cache writes at $10 (5 minutes) and $16 (1 hour)');
   assert.equal(priceReply('claude-mystery-9', { output_tokens: 7 }).cost, null, 'a model not in the table is unpriced, never guessed');
   const spentAt = new Date(2026, 0, 5, 14, 30).toISOString();
   const said = (id, model, usage, extra = {}) => line({ type: 'assistant', timestamp: spentAt, sessionId: named, cwd: repo, requestId: `req_${id}`, message: { id, model, usage }, ...extra });
@@ -928,6 +930,14 @@ Ready to submit your answers?
   const words = text => new RegExp(text.replace(/[()]/g, '\\$&').split(' ').join(' ?')); // a space at the end of a wrapped row is trimmed
   assert.match(leadOut, words("use Relay agents (start_task, start_agent), not Claude's built-in Agent tool. If a start fails, retry once, then tell the user the exact error"),
     "a lead is told to use Relay's agents, and to retry a failed start once and then tell you the error");
+  const [fm, , fOut] = await runOf({ kind: 'agent', agent: 'claude', model: 'fable' });
+  assert.equal(fm, 'fable', 'Fable is a model you can pick');
+  assert.match(fOut, /--model fable/, 'passed to claude as its alias');
+  assert.deepEqual((await runOf({ specialist: 'browner', model: 'stronger' })).slice(0, 2), ['fable', 'high'], 'stronger than Opus is Fable');
+  const draftSrc = fs.readFileSync(new URL('./public/js/agents.js', import.meta.url), 'utf8');
+  assert.match(draftSrc, /role: 'lead', name: 'Lead agent'/, "the new-thread box's Lead mode starts a lead");
+  assert.match(draftSrc, /\{ agent: 'claude', specialist: d\.mode \}/, 'its specialist modes start that specialist');
+  assert.match(draftSrc, /newSession\(\{ project: d\.project, prompt, model: d\.model, effort: d\.effort, \.\.\.who \}\)/, 'and it sends the model and effort picked');
   assert.equal((await request('PATCH', '/api/settings', { body: { agentDefaults: { claude: { model: 'gpt', effort: '' }, lead: { model: '', effort: '' } } } })).status, 400, 'defaults must be known models');
   assert.equal((await request('PATCH', '/api/settings', { body: { scrollSpeed: 10 } })).status, 400, 'scroll speed has a sensible range');
   {
@@ -1193,7 +1203,7 @@ Ready to submit your answers?
   fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "FAKE-CLAUDE $*"\nexec cat\n', { mode: 0o755 }); // stays running
   const editChat = (body = {}, headers = {}) => request('POST', `/api/artifacts/${art.id}/edit-chat`, { body, headers });
   assert.equal((await editChat({}, { 'x-desk-session': shell.id })).status, 403, "agents can't open an edit chat");
-  assert.equal((await editChat({ model: 'gpt' })).status, 400, 'the edit model is haiku, sonnet or opus');
+  assert.equal((await editChat({ model: 'gpt' })).status, 400, 'the edit model is haiku, sonnet, opus or fable');
   const editor = (await editChat()).body;
   const workCopy = path.join(tmp, 'data', 'artifact-edits', art.id, 'page.html');
   assert.equal(fs.readFileSync(workCopy, 'utf8'), '<h1>v2</h1>', 'it works on a copy of the page');
@@ -1207,6 +1217,7 @@ Ready to submit your answers?
   assert.equal((await request('GET', `/a/${art.id}`, { token: '' })).body, '<h1>v3</h1>', 'which updates the page');
   assert.equal((await ok('PATCH', '/api/settings', { artifactEditModel: 'sonnet' })).artifactEditModel, 'sonnet', 'the edit model is a setting');
   assert.equal((await request('PATCH', '/api/settings', { body: { artifactEditModel: 'gpt' } })).status, 400, 'and only a known one');
+  assert.equal((await request('PATCH', '/api/settings', { body: { artifactEditModel: 'fable' } })).status, 200, 'Fable is one');
   await ok('PATCH', '/api/settings', { artifactEditModel: 'haiku' });
   await ok('DELETE', `/api/sessions/${editor.id}`);
   await tool('save_artifact', { id: art.id, title: 'Q3 report', html: diagram });
@@ -1432,6 +1443,23 @@ esac
     assert.deepEqual(await ok('GET', '/api/limits'), { session: { used: 23.5, resetsAt: 1738425600_000 }, weekly: { used: 100 } },
       "the status line's rate_limits are kept for the composer: % used clamped to 0–100, the reset in ms, a bad reset dropped");
     await request('POST', '/api/context', { token: sessions.get(worker.id).agentToken, body: { context_window: {} } });
+    { // a /model switch: the board follows the model the status line reports
+      const chat = db.chats.find(c => c.id === s.chatId), was = [s.model, s.modelId, chat.model];
+      const reports = async (model, ...ids) => {
+        s.model = chat.model = model; delete s.modelId;
+        for (const id of ids) await request('POST', '/api/context', { token: s.agentToken, body: { model: { id } } });
+        return [s.model, chat.model];
+      };
+      assert.deepEqual(await reports('opus', 'claude-sonnet-5-5'), ['opus', 'opus'], 'the first report is only the model it started on, so nothing changes');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5', 'claude-sonnet-5-5'), ['sonnet', 'sonnet'], 'a later change is a /model switch, kept by its chat');
+      assert.equal((await ok('GET', '/api/sessions')).find(x => x.id === s.id).model, 'sonnet', 'and shown on the board');
+      assert.deepEqual(await reports('', 'claude-opus-5-5', 'claude-sonnet-5-5'), ['', ''], "'' (your default) stays '': Claude Code picks that model, not you");
+      assert.deepEqual(await reports('opusplan', 'claude-opus-5-5', 'claude-sonnet-5-5'), ['opusplan', 'opusplan'], 'and so does opusplan, which switches by itself');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5', 'claude-sonnet-4-5'), ['opus', 'opus'], 'an older model id is ignored, not taken for Sonnet 5.5');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5', 'claude-mystery-9'), ['opus', 'opus'], 'and so is an unknown one');
+      assert.deepEqual(await reports('opus', 'claude-opus-5-5[1m]', 'claude-fable-5-2[1m]'), ['fable', 'fable'], 'a 1M-context id is still its model');
+      [s.model, s.modelId, chat.model] = was;
+    }
     assert.equal((await ok('GET', '/api/limits')).session.used, 23.5, "they're the account's: a status line without them (another pane, or before its first reply) keeps them");
     fs.appendFileSync(transcript, `${line({ type: 'assistant', message: { content: [{ type: 'text', text: 'Planning the login work' }], usage: { input_tokens: 0, cache_read_input_tokens: 150_000, cache_creation_input_tokens: 0 } } })}\n`);
     await ok('PATCH', '/api/settings', { leadUpkeep: { ...UP, windowCap: 1_000_000 } });

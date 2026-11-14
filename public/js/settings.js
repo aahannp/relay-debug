@@ -6,7 +6,7 @@ import { modelSelect, effortSelect } from './agents.js';
 import { openUpdates } from './updates.js';
 import { THEMES } from './themes.js';
 
-const PERMISSIONS = [
+export const PERMISSIONS = [
   ['default', 'Ask me', 'Agents ask before editing files or running commands. The safest choice.'],
   ['acceptEdits', 'Accept edits', 'File edits go through. Commands still ask first.'],
   ['auto', 'Auto', 'Claude decides what is safe to do without asking, and asks for the rest.'],
@@ -106,8 +106,6 @@ function popupSelect(select, label) {
     trigger.setAttribute('aria-expanded', 'true');
     const shut = refocus => { m.remove(); trigger.setAttribute('aria-expanded', 'false'); if (refocus) trigger.focus(); };
     m.addEventListener('keydown', e => {
-      const at = { ArrowDown: items.indexOf(document.activeElement) + 1, ArrowUp: items.indexOf(document.activeElement) - 1, Home: 0, End: items.length - 1 }[e.key];
-      if (at !== undefined) { e.preventDefault(); items[(at + items.length) % items.length].focus(); }
       if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); shut(true); }
     });
     // A click outside, or focus moving on. Deferred: removing the menu fires focusout too, and a second remove() inside it throws.
@@ -159,7 +157,7 @@ const PAGES = {
       a.installed ? h('span', { class: 'chip', style: { color: 'var(--ok)' } }, icon('check', 11), 'Installed') : h('span', { class: 'chip' }, 'Not found on your PATH'),
       a.installed && h('button', { class: `btn xs${s.defaultAgent === a.id ? ' primary' : ''}`, onClick: () => set({ defaultAgent: a.id }) }, s.defaultAgent === a.id ? 'Default' : 'Make default')))]),
     group('Defaults', [
-      ...[['claude', 'workers', 'New Claude Code threads, workers, and specialists left on the default. Sonnet keeps spend down; pick Opus for harder work.'], ['lead', 'lead agents', 'The agent that plans and hands out the work.']].map(([kind, title, text]) => {
+      ...[['claude', 'workers', 'New Claude Code threads, workers, and specialists left on the default. Sonnet keeps spend down; pick Opus for harder work, Fable for the hardest (at twice the price of Opus).'], ['lead', 'lead agents', 'The agent that plans and hands out the work.']].map(([kind, title, text]) => {
         const d = s.agentDefaults?.[kind] ?? { model: '', effort: '' };
         const save = patch => set({ agentDefaults: { ...s.agentDefaults, [kind]: { ...d, ...patch } } });
         const model = modelSelect(d.model);

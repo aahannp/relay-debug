@@ -1,6 +1,7 @@
 // Agents view: every agent, shell and browser pane for the project, tiled in a grid of real terminals.
 import { state, api, h, icon, avatar, on, emit, toast, guard, actions, command, commands, menu, askText, modal, confirmDialog, agentLabel, shortBranch, baseName, copy, chatTitle, meterView, openSpaces, spaceSummary, DRAG, MONO, STATUS_LABEL } from './ui.js';
 import { chatView } from './chat.js';
+import { PERMISSIONS } from './settings.js';
 
 const panes = new Map(); // id -> pane (a session's terminal, or a browser)
 const seen = new Map(); // session id -> last status we told you about
@@ -132,7 +133,7 @@ actions.renameAgent = renameAgent;
 
 // ---------- Specialists ----------
 const claudeReady = () => state.agents.some(a => a.id === 'claude' && a.installed);
-const MODELS = [['', 'Their usual model'], ['opus', 'Opus: the most capable'], ['sonnet', 'Sonnet: everyday work'], ['haiku', 'Haiku: quick and cheap']];
+const MODELS = [['', 'Their usual model'], ['fable', 'Fable: the hardest, longest tasks'], ['opus', 'Opus: complex work'], ['sonnet', 'Sonnet: everyday work'], ['haiku', 'Haiku: quick and cheap']];
 export const modelSelect = value => h('select', { class: 'input' }, MODELS.map(([id, label]) => h('option', { value: id, selected: id === value }, label)));
 const EFFORTS = [['', 'Their usual effort'], ['low', 'Low: quickest'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max: most thorough']];
 export const effortSelect = value => h('select', { class: 'input' }, EFFORTS.map(([id, label]) => h('option', { value: id, selected: id === value }, label)));
@@ -1053,6 +1054,7 @@ const controls = () => [
   ['squareMenu', 'Toggle thread details', e => actions.threadDetails?.(e.currentTarget)],
   ['panelBottom', 'Toggle terminal drawer (⌘J)', () => actions.toggleDrawer?.()],
   ['panelRight', 'Toggle right panel (⌘D)', () => actions.toggleDiff?.()],
+  ...(claudeReady() ? [['star', 'Start a lead agent: it plans tasks and starts workers', () => (draft ? draft.setMode('lead') : openDraft(undefined, 'lead'))]] : []),
   ['layoutGrid', 'Show all threads in a grid', () => actions.setLayout('grid')],
 ].map(([name, label, onClick]) => h('button', { class: 'icon-btn', title: label, 'aria-label': label, onClick }, icon(name, 16)));
 
@@ -1067,10 +1069,10 @@ export const hide = () => document.getElementById('titleControls')?.replaceChild
 actions.newChat = project => (thread() ? openDraft(project) : newSession(project ? { project } : {}));
 command('New thread', () => actions.newChat(), { icon: 'squarePen' });
 
-function openDraft(project = state.project) {
-  if (!project) return actions.addProject(path => openDraft(path));
+function openDraft(project = state.project, mode = '') {
+  if (!project) return actions.addProject(path => openDraft(path, mode));
   unmaximise();
-  const d = { project, model: '' };
+  const d = { project, mode, model: '', effort: '' };
   const name = h('span', {}, projectName(project));
   const pickProject = path => { d.project = path; name.textContent = projectName(path); refreshHeader(); };
   const projectBtn = h('button', { class: 'draft-project', 'aria-haspopup': 'menu', title: 'Choose the project', onClick: e => menu(e.currentTarget, [
@@ -1078,11 +1080,37 @@ function openDraft(project = state.project) {
     'sep',
     { label: 'Add project', icon: 'plus', onClick: () => actions.addProject(pickProject) },
   ]) }, name, icon('chevronDown', 16));
-  const modelLabel = h('span', {}, 'Default model');
-  const modelBtn = h('button', { class: 'btn ghost xs', 'aria-haspopup': 'menu', title: 'Model', onClick: e => menu(e.currentTarget, MODELS.map(([id, label]) => ({
-    label: id ? label.split(':')[0] : 'Default model', sub: id ? label.split(': ')[1] : 'the usual one', icon: d.model === id ? 'check' : undefined,
-    onClick: () => { d.model = id; modelLabel.textContent = id ? label.split(':')[0] : 'Default model'; },
-  }))) }, modelLabel, icon('chevronDown', 12));
+  // A chip whose menu picks one of `items` ([value, label, sub, checked] or a heading); `pick` gets the value and label.
+  // btn.show(text) shows a value, in its accessible name too ("Model: Opus", not just "Opus").
+  const chip = (title, text, items, pick) => {
+    const label = h('span', {}, text);
+    const btn = h('button', { class: 'btn ghost xs', 'aria-haspopup': 'menu', title, onClick: () => menu(btn, items().map(x => x.heading ? x : ({
+      label: x[1], sub: x[2], checked: !!x[3], icon: x[3] ? 'check' : undefined, onClick: () => pick(x[0], x[1]),
+    }))) }, label, icon('chevronDown', 12));
+    btn.show = t => { label.textContent = t; btn.setAttribute('aria-label', `${title.split(':')[0]}: ${t}`); };
+    btn.show(text);
+    return btn;
+  };
+  const short = ([id, label], none) => [id, id ? label.split(':')[0] : none, id ? label.split(': ')[1] : 'the usual one'];
+  // Mode: a plain agent, the lead (plans tasks and starts workers) or a specialist. Both of the last run as Claude.
+  const MODES = () => [['', `${agentLabel(state.settings.defaultAgent)} agent`, 'One agent works on it'], ...(claudeReady() ? [['lead', 'Lead agent', 'Plans tasks and starts workers'],
+    ...(state.specialists.length ? [{ heading: 'Specialists' }, ...state.specialists.map(x => [x.id, x.name, x.role.split(':')[0]])] : [])] : [])];
+  const setMode = want => {
+    const [mode, text] = MODES().find(x => x[0] === want) ?? MODES()[0]; // no Claude: only the plain agent
+    d.mode = mode;
+    modeBtn.show(text);
+    const claude = !!mode || state.settings.defaultAgent === 'claude';
+    for (const b of [modelBtn, effortBtn, permBtn]) b.hidden = !claude; // other agents take none of these
+    input.placeholder = mode === 'lead' ? 'Describe the goal: the lead turns it into tasks and starts a worker for each' : 'Ask anything, @ to mention files';
+  };
+  const modeBtn = chip('Mode: who works on it', '', () => MODES().map(x => x.heading ? x : [...x, d.mode === x[0]]), setMode);
+  const modelBtn = chip('Model', 'Default model', () => MODELS.map(x => [...short(x, 'Default model'), d.model === x[0]]), (id, t) => { d.model = id; modelBtn.show(t); });
+  const effortBtn = chip('Effort', 'Default effort', () => EFFORTS.map(x => [...short(x, 'Default effort'), d.effort === x[0]]), (id, t) => { d.effort = id; effortBtn.show(t); });
+  // Permissions is a setting: the chip shows what's saved, so a failed save or a change in Settings shows true.
+  const PERMS = () => [{ heading: 'For every new Claude agent, in all spaces' }, ...PERMISSIONS.map(([id, label, sub]) => [id, label, sub, state.settings.permissionMode === id])];
+  const savedPerm = () => (PERMISSIONS.find(x => x[0] === state.settings.permissionMode) ?? PERMISSIONS[0])[1];
+  const permBtn = chip('Permissions: a Relay-wide setting, used by every new Claude agent in all spaces', savedPerm(), PERMS, id => actions.setSetting({ permissionMode: id }));
+  const offSettings = on('settings', () => (draft === d ? permBtn.show(savedPerm()) : offSettings()));
   const go = h('button', { class: 'chat-go', title: 'Send (Enter; Shift+Enter for a new line)', 'aria-label': 'Send', disabled: true, onClick: () => send() }, icon('arrowUp', 16));
   const input = h('textarea', { class: 'chat-input', rows: 1, 'aria-label': 'First message', placeholder: 'Ask anything, @ to mention files',
     onInput: () => { go.disabled = !input.value.trim(); },
@@ -1095,12 +1123,15 @@ function openDraft(project = state.project) {
     const prompt = input.value.trim();
     if (!prompt || go.disabled) return;
     go.disabled = true;
-    if (!(await newSession({ project: d.project, prompt, model: d.model }))) go.disabled = false; // selecting it closes the draft
+    const who = d.mode === 'lead' ? { agent: 'claude', role: 'lead', name: 'Lead agent' } : d.mode ? { agent: 'claude', specialist: d.mode } : {};
+    if (!(await newSession({ project: d.project, prompt, model: d.model, effort: d.effort, ...who }))) go.disabled = false; // selecting it closes the draft
   };
   d.el = h('div', { class: 'thread-draft' },
     h('h1', { class: 'draft-head' }, 'What should we build in ', projectBtn, '?'),
     h('div', { class: 'chat-composer' }, h('div', { class: 'chat-card' }, input,
-      h('div', { class: 'chat-controls' }, modelBtn, h('span', { class: 'grow' }), go))));
+      h('div', { class: 'chat-controls' }, modeBtn, modelBtn, effortBtn, permBtn, h('span', { class: 'grow' }), go))));
+  setMode(mode);
+  d.setMode = want => { setMode(want); input.focus(); };
   draft = d;
   actions.showView('agents');
   selectionChanged();

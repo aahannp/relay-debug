@@ -150,7 +150,7 @@ flowchart LR
   `/compact` into it. After 3 compactions a fresh lead with the same name takes over, handed
   its summary, open tasks, running workers and last messages; the old chat stays in the sidebar.
 - **Team**: named specialists, each a Claude agent with one area of expertise, its own instructions and,
-  if you like, a model (Opus, Sonnet or Haiku). Seven come built in, and every agent's brief says when to pick
+  if you like, a model (Fable, Opus, Sonnet or Haiku). Seven come built in, and every agent's brief says when to pick
   each one:
 
   | Name | Role | Use it | Model |
@@ -195,7 +195,7 @@ flowchart LR
   View them in the app or your browser, and publish one to GitHub Pages with one click, using an account
   you're signed in to with `gh`. Relay keeps them in one repo it makes, and never writes to any other.
   Unpublish takes a page down again. **Edit with AI** opens a chat beside the page that changes it and saves a
-  new version as you watch, on Haiku by default (pick Sonnet or Opus in the panel). **Copy link** copies the
+  new version as you watch, on Haiku by default (pick Sonnet, Opus or Fable in the panel). **Copy link** copies the
   published link, or a local one that works on this Mac while Relay is open.
 - **Task Notes**: the Board's Task Notes button lists your open tasks from the Task Notes app. Add one to hand
   it to an agent, and Task Notes follows its card (In progress and Review show as in progress, Done marks it

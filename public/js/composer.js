@@ -151,6 +151,9 @@ const COMMANDS = [['add-dir', 'Add a working directory'], ['agents', 'Manage sub
   ['memory', 'Edit memory files'], ['model', 'Switch the model'], ['permissions', 'Manage tool permissions'],
   ['resume', 'Resume an earlier conversation'], ['review', 'Review a pull request'], ['rewind', 'Rewind the conversation or code'],
   ['status', 'Show version, model and account'], ['usage', 'Show plan usage limits']];
+// Every built-in the page knows: the described ones, then the rest of SCREENS and PICKERS, and the chat-side ones named above.
+const BUILTINS = [...COMMANDS, ...[...SCREENS, ...PICKERS, 'plan', 'fast', 'rename'].filter(n => !COMMANDS.some(([c]) => c === n))
+  .map(n => [n, drawsScreen(`/${n}`) ? 'Opens in the terminal' : 'Built-in command'])];
 // The word being typed at the caret, if it opens the menu: `/` at the very start of the box, or `@` anywhere.
 export function triggerAt(text, caret) {
   const m = /(^|\s)([@/])(\S*)$/.exec(text.slice(0, caret));
@@ -311,11 +314,11 @@ export function composer(p) {
     if (!listings.has(dir)) listings.set(dir, api('GET', `/api/fs/list?path=${encodeURIComponent(dir)}`).catch(() => []));
     return listings.get(dir);
   };
-  const own = async dir => (await list(dir)).filter(f => !f.dir && f.name.endsWith('.md')).map(f => [f.name.slice(0, -3), dir.startsWith('~') ? 'Your command' : 'Project command']);
+  let own = null; // the project's and your .claude/commands, asked once
   async function itemsFor(t) {
     const q = t.query.toLowerCase();
     if (t.kind === '/') {
-      const all = [...COMMANDS, ...await own(`${p.session.cwd}/.claude/commands`), ...await own('~/.claude/commands')];
+      const all = [...BUILTINS, ...await (own ??= api('GET', `/api/commands?cwd=${encodeURIComponent(p.session.cwd)}`).catch(() => []))];
       return all.filter(([name]) => name.toLowerCase().includes(q)).sort(([a], [b]) => b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q))
         .map(([name, desc]) => ({ label: `/${name}`, desc, icon: 'terminal', text: `/${name} ` }));
     }

@@ -2196,6 +2196,15 @@ esac
     assert.deepEqual([trust.kind, trust.options.map(o => o.label)], ['menu', ['No, exit', 'Yes, I trust this folder']], 'the trust dialog, with no pending tool, is a plain menu');
     assert.equal(panelOf(null, null).kind, 'terminal', "a menu that couldn't be read sends you to the terminal");
     assert.ok(!/var\(--accent/.test(fs.readFileSync(new URL('./public/composer.css', import.meta.url), 'utf8')), 'the composer never uses the pink accent');
+    // .chat-composer drops clicks and only its lane takes them back; the new-thread box (agents.js) has no lane, so its card must
+    assert.match(fs.readFileSync(new URL('./public/thread.css', import.meta.url), 'utf8'), /\.thread-draft \.chat-card \{ pointer-events: auto;/, 'the new-thread box takes mouse clicks');
+    // The `/` menu's own commands: a missing folder is none (no 404), and yours come from CLAUDE_CONFIG_DIR
+    const cmds = path.join(process.env.CLAUDE_CONFIG_DIR, 'commands');
+    assert.deepEqual(await ok('GET', `/api/commands?cwd=${encodeURIComponent(path.join(tmp, 'nowhere'))}`), [], 'no commands folders: an empty list');
+    fs.mkdirSync(cmds, { recursive: true });
+    fs.writeFileSync(path.join(cmds, 'ship.md'), 'Ship it');
+    assert.deepEqual(await ok('GET', `/api/commands?cwd=${encodeURIComponent(path.join(tmp, 'nowhere'))}`), [['ship', 'Your command']], "yours, from CLAUDE_CONFIG_DIR");
+    fs.rmSync(cmds, { recursive: true });
   }
   { // Finder's Open in Relay Quick Action: valid plists, written once, rewritten when it changes, nothing else touched
     const services = path.join(tmp, 'Services');

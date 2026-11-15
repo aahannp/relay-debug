@@ -916,7 +916,7 @@ Ready to submit your answers?
   assert.ok(!(await ok('GET', '/api/sessions')).some(x => x.chatId === first.chatId), 'removing a chat also closes its finished pane');
 
   // The team: named specialists with their own instructions and model, who know about each other
-  assert.deepEqual((await ok('GET', '/api/specialists')).map(x => [x.name, x.model, x.effort]), [['Christie', 'sonnet', 'medium'], ['Browner', 'opus', 'high'], ['Scout', 'haiku', 'low'], ['Archie', 'opus', 'high'], ['Vera', 'opus', 'high'], ['Sherlock', 'opus', 'high'], ['Tess', 'sonnet', 'medium'], ['Cassie', 'fable', 'high']], 'eight built-in specialists, each with a usual model and effort');
+  assert.deepEqual((await ok('GET', '/api/specialists')).map(x => [x.name, x.model, x.effort]), [['Christie', 'sonnet', 'medium'], ['Browner', 'opus', 'high'], ['Scout', 'haiku', 'low'], ['Archie', 'opus', 'high'], ['Vera', 'opus', 'high'], ['Sherlock', 'opus', 'high'], ['Tess', 'sonnet', 'medium'], ['Cassie', 'fable', 'high'], ['Nova', 'fable', 'high']], 'nine built-in specialists, each with a usual model and effort');
   const scout = await ok('POST', '/api/sessions', { specialist: 'scout', project: repo, prompt: 'where is the README?' });
   assert.deepEqual([scout.name, scout.agent, scout.model, scout.specialist.name, scout.asked], ['Scout', 'claude', 'haiku', 'Scout', 'where is the README?'], 'a specialist is Claude with their own model');
   await exited(scout.id);
@@ -1011,8 +1011,8 @@ Ready to submit your answers?
   await exited(startedTask.agent);
   await ok('DELETE', `/api/tasks/${made.id}`);
   const teamNow = JSON.parse((await viaTool('list_team', {})).content[0].text);
-  assert.deepEqual(teamNow.map(x => [x.name, x.model]), [['Christie', 'sonnet'], ['Browner', 'opus'], ['Scout', 'haiku'], ['Archie', 'opus'], ['Vera', 'opus'], ['Sherlock', 'opus'], ['Tess', 'sonnet'], ['Cassie', 'fable'], ['Rhea', 'sonnet']], 'agents see the whole team');
-  assert.deepEqual([teamNow[7].id, teamNow[7].instructions], [rhea.id, 'Review carefully.'], 'with each full profile');
+  assert.deepEqual(teamNow.map(x => [x.name, x.model]), [['Christie', 'sonnet'], ['Browner', 'opus'], ['Scout', 'haiku'], ['Archie', 'opus'], ['Vera', 'opus'], ['Sherlock', 'opus'], ['Tess', 'sonnet'], ['Cassie', 'fable'], ['Nova', 'fable'], ['Rhea', 'sonnet']], 'agents see the whole team');
+  assert.deepEqual([teamNow[9].id, teamNow[9].instructions], [rhea.id, 'Review carefully.'], 'with each full profile');
   const edited = await viaTool('update_specialist', { specialist: 'rhea', instructions: 'Review briefly.' });
   assert.ok(!edited.isError, 'an agent can edit a specialist when asked');
   assert.deepEqual((await ok('GET', '/api/specialists')).find(x => x.id === rhea.id).instructions, 'Review briefly.', 'and the change sticks');
@@ -1053,14 +1053,14 @@ Ready to submit your answers?
   await ok('PATCH', '/api/settings', { agentsCanSpawn: true });
   assert.equal((await ok('PATCH', `/api/specialists/${rhea.id}`, { readOnly: true })).readOnly, true, 'any specialist can be made read-only');
   await ok('DELETE', `/api/specialists/${rhea.id}`);
-  assert.equal((await ok('GET', '/api/specialists')).length, 8);
+  assert.equal((await ok('GET', '/api/specialists')).length, 9);
 
   // A team saved by an older Relay gets the built-ins added since, but not one you removed, and keeps your edits
   {
     const saved = [db.specialists, db.removedSpecialists];
     db.specialists = [{ ...db.specialists[0], role: 'Learning coach: mine now' }, db.specialists[2], { id: 'own1', name: 'Mine', role: 'Custom', model: '', effort: '', instructions: '' }];
     db.removedSpecialists = ['browner'];
-    assert.deepEqual((await ok('GET', '/api/specialists')).map(x => x.name), ['Christie', 'Scout', 'Mine', 'Archie', 'Vera', 'Sherlock', 'Tess'], 'new built-ins appear after your own team');
+    assert.deepEqual((await ok('GET', '/api/specialists')).map(x => x.name), ['Christie', 'Scout', 'Mine', 'Archie', 'Vera', 'Sherlock', 'Tess', 'Cassie', 'Nova'], 'new built-ins appear after your own team');
     assert.equal(T.find('christie').role, 'Learning coach: mine now', 'your edit to a built-in stays');
     await ok('DELETE', '/api/specialists/vera');
     await ok('PATCH', '/api/specialists/own1', { name: 'Mine too' });

@@ -190,6 +190,9 @@ try {
   assert.equal((await request('PATCH', `/api/tasks/${task.id}`, { body: { status: 'bogus' } })).status, 400, 'unknown status is rejected');
   await ok('POST', `/api/tasks/${task.id}/comments`, { text: 'looks good' });
   assert.equal((await ok('GET', `/api/tasks?project=${encodeURIComponent(repo)}`))[0].notes.length, 1);
+  assert.equal((await ok('PATCH', `/api/tasks/${task.id}`, { status: 'review' })).notes.at(-1).text, 'moved todo → review', 'a status change leaves a line in the task notes');
+  await ok('PATCH', `/api/tasks/${task.id}`, { status: 'todo' });
+  assert.equal((await ok('GET', `/api/tasks?project=${encodeURIComponent(repo)}`))[0].notes.length, 3, 'only that one comment, then each move');
 
   // Worktree → review → commit → merge → remove
   const wt = await createWorktree(repo, 'greeting', task.id);

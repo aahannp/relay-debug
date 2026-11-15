@@ -693,7 +693,10 @@ route('GET', '/api/tasknotes', () => TN.openTasks());
 route('POST', '/api/tasknotes/import', async ({ req, body }) =>
   addTask(req, await TN.bringOver({ id: String(body.id || ''), date: String(body.date || '') }, projectFor(req, body.project))));
 // A task changing column, for the other agents' news (see note in lib/sessions.mjs).
-const moved = (req, task, to) => S.note(task.project, caller(req)?.id ?? null, `tasks moved to ${to}`, `Task ${S.plain(task.title, 60)} moved to ${to}`);
+const moved = (req, task, to) => {
+  S.logMove(task, to, caller(req)?.name || 'You');
+  S.note(task.project, caller(req)?.id ?? null, `tasks moved to ${to}`, `Task ${S.plain(task.title, 60)} moved to ${to}`);
+};
 route('PATCH', '/api/tasks/:id', ({ req, params, body }) => {
   const task = findTask(params.id);
   if (body.status !== undefined && !STATUSES.includes(body.status)) throw fail(400, `Status must be one of: ${STATUSES.join(', ')}`);
@@ -738,12 +741,17 @@ route('POST', '/api/tasks/:id/start', async ({ req, params, body }) => {
   const prompt = task.description ? `${task.title}\n\n${task.description}` : task.title;
   const was = task.status;
   const s = await S.createSession({ project: task.project, agent, prompt, name: task.title, taskId: task.id, worktree, specialist: body.specialist || null, model: body.model || '', effort: body.effort || '', startedBy: starter(req) });
-  if (task.status !== 'doing') S.note(task.project, s.id, 'tasks moved to doing', `Task ${S.plain(task.title, 60)} moved to doing`); // by its own agent, which knows
+  let startNote;
+  if (task.status !== 'doing') {
+    startNote = S.logMove(task, 'doing', caller(req)?.name || 'You');
+    S.note(task.project, s.id, 'tasks moved to doing', `Task ${S.plain(task.title, 60)} moved to doing`); // by its own agent, which knows
+  }
   Object.assign(task, { status: 'doing', doingSince: Date.now(), sessionId: s.id, agent, worktree, branch: s.worktree?.branch ?? null, worktreePath: s.worktree?.path ?? null, updatedAt: Date.now() });
   changed('tasks');
   if (fromAgent(req)) {
     await S.launched(s).catch(e => {
-      task.status = was; // it never started, so the task goes back where it was
+      task.status = was; // it never started, so the task goes back where it was, and its "moved" line goes
+      task.notes = task.notes.filter(n => n !== startNote);
       changed('tasks');
       throw e;
     });

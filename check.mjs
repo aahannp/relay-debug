@@ -20,6 +20,7 @@ import * as U from './lib/update.mjs';
 import { parseMarkdown, meterView } from './public/js/ui.js';
 import { stripDeskCookies } from './lib/cookies.mjs';
 import { installWorkflow } from './lib/quick-action.mjs';
+import { groupsOf } from './public/js/artifacts.js';
 import { randomUUID, createHash } from 'node:crypto';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-desk-check-')));
@@ -1232,6 +1233,14 @@ Ready to submit your answers?
   await ok('DELETE', '/api/artifact-folders/roadmap');
   await ok('DELETE', '/api/artifact-folders/Empty');
   await ok('DELETE', `/api/artifacts/${filed.id}`);
+
+  // The All view puts the group with the newest page first, so a page an agent just saved is at the top, filed or not
+  {
+    const page = (id, updatedAt, folder) => ({ id, updatedAt, folder });
+    const pages = [page('new', 3), page('mid', 2, 'Research'), page('old', 1, 'Old')];
+    assert.deepEqual(groupsOf(pages, ['Old', 'Research', 'Empty']).map(([name, list]) => [name, list.map(a => a.id)]),
+      [['-', ['new']], ['Research', ['mid']], ['Old', ['old']]], 'newest group first; empty folders left out');
+  }
 
   // "Edit with AI": a small-model chat beside the page, on a copy of it, that saves back by id
   fs.writeFileSync(path.join(fakeBin, 'claude'), '#!/bin/sh\necho "FAKE-CLAUDE $*"\nexec cat\n', { mode: 0o755 }); // stays running

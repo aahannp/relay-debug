@@ -72,6 +72,12 @@ export function toolbar() {
 
 const folderNames = () => state.artifactFolders.map(f => f.name);
 const inView = a => view === ALL || (view === UNFILED ? !a.folder : a.folder === view);
+// The All view's groups, the one with the newest page first: in folder order, a page just saved sat below every older one.
+const newest = list => Math.max(...list.map(a => a.updatedAt));
+export const groupsOf = (pages, folders) => [...folders, UNFILED]
+  .map(name => [name, pages.filter(a => (name === UNFILED ? !a.folder : a.folder === name))])
+  .filter(([, list]) => list.length)
+  .sort(([, a], [, b]) => newest(b) - newest(a));
 const countOf = name => state.artifacts.filter(a => (name === UNFILED ? !a.folder : a.folder === name)).length;
 
 function render() {
@@ -91,8 +97,7 @@ function render() {
   if (query) {
     listEl.replaceChildren(h('div', { class: 'art-note' }, `${pages.length} ${pages.length === 1 ? 'page' : 'pages'} match`), ...pages.map(item));
   } else if (view === ALL) {
-    const groups = [...folderNames(), UNFILED].map(name => [name, pages.filter(a => (name === UNFILED ? !a.folder : a.folder === name))]);
-    listEl.replaceChildren(...groups.filter(([, list]) => list.length).map(([name, list]) => group(name, list)));
+    listEl.replaceChildren(...groupsOf(pages, folderNames()).map(([name, list]) => group(name, list)));
   } else {
     listEl.replaceChildren(...(pages.length ? pages.map(item) : [h('div', { class: 'art-note' }, 'Nothing here yet. Drag a page onto this folder, or use Move to in its right-click menu.')]));
   }
